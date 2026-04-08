@@ -1,0 +1,1264 @@
+---
+import Layout from '../layouts/Layout.astro';
+import artworksRaw from '../data/artworks.json';
+import site from '../data/site.json';
+import { formatArtworkDate } from '../utils/formatArtworkDate';
+import { getEffectiveMaxSideCmFromPrintImage } from '../utils/getImagePixelDimensions';
+import { maxSideCm, parseDimensionsToCm } from '../utils/parseArtworkDimensions';
+
+type ArtworkEntry = (typeof artworksRaw)[number];
+
+/** Physical cm from JSON, or inferred cm from full image at 300 DPI print (matches canvas scale). */
+function effectiveMaxSideCm(artwork: ArtworkEntry): number | null {
+  const p = parseDimensionsToCm(artwork.dimensions);
+  if (p) return maxSideCm(p);
+  return getEffectiveMaxSideCmFromPrintImage(artwork.image);
+}
+
+const sideCmList = artworksRaw
+  .map(effectiveMaxSideCm)
+  .filter((n): n is number => n != null);
+
+const maxSideAcrossArtworks = sideCmList.length > 0 ? Math.max(...sideCmList) : 1;
+
+const MIN_GALLERY_DIM_SCALE = 0.3;
+
+function galleryDimensionScale(artwork: ArtworkEntry): number {
+  const side = effectiveMaxSideCm(artwork);
+  if (side == null) return 1;
+  const raw = side / maxSideAcrossArtworks;
+  return Math.max(MIN_GALLERY_DIM_SCALE, Math.min(1, raw));
+}
+
+function buildGallerySections(items: ArtworkEntry[]) {
+  const sections: { title: string; cards: { artwork: ArtworkEntry; index: number }[] }[] = [];
+  let index = 0;
+  for (const artwork of items) {
+    const title =
+      'sectionTitle' in artwork && typeof artwork.sectionTitle === 'string'
+        ? artwork.sectionTitle
+        : 'Works';
+    const last = sections[sections.length - 1];
+    if (!last || last.title !== title) {
+      sections.push({ title, cards: [] });
+    }
+    sections[sections.length - 1].cards.push({ artwork, index: index++ });
+  }
+  return sections;
+}
+
+function isCanvasPainting(materials: ArtworkEntry['materials']): boolean {
+  return typeof materials === 'string' && /\bcanvas\b/i.test(materials);
+}
+
+function isDigitalArtwork(materials: ArtworkEntry['materials']): boolean {
+  return typeof materials === 'string' && materials.trim().toLowerCase() === 'digital';
+}
+
+function isCharcoalArtwork(materials: ArtworkEntry['materials']): boolean {
+  return typeof materials === 'string' && materials.trim().toLowerCase() === 'charcoal';
+}
+
+const gallerySections = buildGallerySections(artworksRaw);
+
+/** Shared slug body for URL fragments (ASCII letters, digits, hyphens). */
+function slugRawFromTitle(title: string, emptyFallback: string): string {
+  const raw = title
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '');
+  return raw || emptyFallback;
+}
+
+/** URL fragments like #acrylic-views-dimension-reduction (reserved words get a `section-` prefix). */
+function slugifyFragmentFromTitle(title: string): string {
+  const slug = slugRawFromTitle(title, 'section');
+  const reserved = new Set(['top', 'about', 'works', 'lightbox']);
+  return reserved.has(slug) ? `section-${slug}` : slug;
+}
+
+function uniqueGallerySectionFragmentIds(titles: string[]): string[] {
+  const counts = new Map<string, number>();
+  return titles.map((title) => {
+    const base = slugifyFragmentFromTitle(title);
+    const n = (counts.get(base) ?? 0) + 1;
+    counts.set(base, n);
+    return n === 1 ? base : `${base}-${n}`;
+  });
+}
+
+const gallerySectionFragmentIds = uniqueGallerySectionFragmentIds(gallerySections.map((s) => s.title));
+
+const takenArtworkFragmentIds = new Set<string>([
+  'top',
+  'about',
+  'works',
+  'lightbox',
+  ...gallerySectionFragmentIds,
+]);
+
+/** Unique artwork #fragments: never collide with section ids or reserved routes. */
+function uniqueArtworkFragmentIds(titles: string[], taken: Set<string>): string[] {
+  const used = new Set(taken);
+  return titles.map((title) => {
+    let base = slugRawFromTitle(title, 'artwork');
+    let id = base;
+    let n = 2;
+    while (used.has(id)) {
+      id = `${base}-${n++}`;
+    }
+    used.add(id);
+    return id;
+  });
+}
+
+const artworkFragmentIds = uniqueArtworkFragmentIds(
+  artworksRaw.map((a) => a.title),
+  takenArtworkFragmentIds,
+);
+---
+
+<Layout title={`${site.siteTitle} — Paintings`} description={site.metaDescription}>
+  <!-- Header -->
+  <header class="header" id="top">
+    <div class="container header-inner">
+      <a href="#top" class="header-name">{site.siteTitle}</a>
+      <div class="header-actions">
+        <nav class="header-nav">
+          <a href="#about">About</a>
+          <a href="#works">Works</a>
+        </nav>
+        <button
+          type="button"
+          class="theme-toggle"
+          id="theme-toggle"
+          aria-label="Switch theme"
+          aria-pressed="false"
+        >
+          <svg
+            class="theme-toggle-icon theme-toggle-moon"
+            xmlns="http://www.w3.org/2000/svg"
+            width="20"
+            height="20"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+          </svg>
+          <svg
+            class="theme-toggle-icon theme-toggle-sun"
+            xmlns="http://www.w3.org/2000/svg"
+            width="20"
+            height="20"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <circle cx="12" cy="12" r="4"></circle>
+            <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"
+            ></path>
+          </svg>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <!-- About -->
+    <section class="about" id="about">
+      <div class="container">
+        <h2 class="section-label">About</h2>
+        <div class="about-content">
+          {site.aboutParagraphs.map((paragraph) => (
+            <p>{paragraph}</p>
+          ))}
+          <p class="about-contact">
+            <span class="about-contact-name">{site.artistName}</span>
+            <a class="about-contact-email" href={`mailto:${site.email}`}>{site.email}</a>
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Gallery -->
+    <section class="gallery" id="works">
+      <div class="container">
+        <h2 class="section-label">Works</h2>
+
+        {artworksRaw.length === 0 && (
+          <p class="gallery-empty">
+            No artworks yet. Add entries to <code>src/data/artworks.json</code> and put each piece in its own
+            folder under <code>public/artworks/</code> (see README).
+          </p>
+        )}
+
+        {gallerySections.map((section, sectionIndex) => (
+          <div class="gallery-section" id={gallerySectionFragmentIds[sectionIndex]}>
+            <h3 class="gallery-section-heading">{section.title}</h3>
+            <div class="gallery-wall">
+              {section.cards.map(({ artwork, index }) => {
+                const thumb = artwork.thumbnail;
+                const dateLabel = formatArtworkDate(artwork);
+                return (
+                <button
+                  type="button"
+                  class:list={[
+                    'artwork-card',
+                    isCanvasPainting(artwork.materials) && 'artwork-card--canvas',
+                    isDigitalArtwork(artwork.materials) && 'artwork-card--digital',
+                    isCharcoalArtwork(artwork.materials) && 'artwork-card--charcoal',
+                  ]}
+                  id={artworkFragmentIds[index]}
+                  data-index={index}
+                  aria-label={`View ${artwork.title}`}
+                  style={{ '--dim-scale': String(galleryDimensionScale(artwork)) }}
+                >
+                  <div class="artwork-image-wrap">
+                    <img
+                      src={thumb ?? artwork.image}
+                      alt={artwork.title}
+                      loading="lazy"
+                      decoding="async"
+                    />
+                  </div>
+                  <div class="artwork-caption">
+                    <span class="artwork-card-title">{artwork.title}</span>
+                    {dateLabel !== '' && <span class="artwork-card-year">{dateLabel}</span>}
+                  </div>
+                </button>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
+  </main>
+
+  <!-- Lightbox -->
+  <div id="lightbox" class="lightbox" aria-hidden="true" role="dialog" aria-label="Artwork viewer">
+    <button class="lightbox-close" aria-label="Close">&times;</button>
+
+    <div class="lightbox-body">
+      <button class="lightbox-nav lightbox-prev" aria-label="Previous artwork">&#8249;</button>
+
+      <div class="lightbox-content">
+        <div class="lightbox-image-area">
+          <div class="lightbox-zoom-viewport" id="lb-zoom-viewport">
+            <img
+              id="lightbox-img"
+              src=""
+              alt=""
+              tabindex="-1"
+              title="Click to zoom in at that spot. When zoomed: drag to pan; click without dragging to zoom out."
+            />
+          </div>
+        </div>
+
+        <div class="lightbox-info">
+          <h3 id="lb-title" class="lightbox-title"></h3>
+
+          <dl class="lightbox-details">
+            <div id="lb-date-wrap" class="detail-row">
+              <dt>Date</dt>
+              <dd id="lb-date"></dd>
+            </div>
+            <div id="lb-dimensions-wrap" class="detail-row">
+              <dt>Dimensions</dt>
+              <dd id="lb-dimensions"></dd>
+            </div>
+            <div class="detail-row">
+              <dt>Materials</dt>
+              <dd id="lb-materials"></dd>
+            </div>
+          </dl>
+
+          <div id="lb-source-wrap" class="lightbox-source">
+            <p id="lb-source-label" class="detail-label">Source picture</p>
+            <div id="lb-source-images" class="lightbox-source-images"></div>
+          </div>
+        </div>
+      </div>
+
+      <button class="lightbox-nav lightbox-next" aria-label="Next artwork">&#8250;</button>
+    </div>
+
+    <!-- Mobile navigation -->
+    <div class="lightbox-mobile-nav">
+      <button class="lightbox-nav-mobile lightbox-prev-mobile" aria-label="Previous artwork">&#8249; Prev</button>
+      <button class="lightbox-nav-mobile lightbox-next-mobile" aria-label="Next artwork">Next &#8250;</button>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <div class="container">
+      <p class="footer-line">&copy; {new Date().getFullYear()} {site.siteTitle}</p>
+      <p class="footer-line">
+        {site.artistName}
+        <span class="footer-sep" aria-hidden="true"> · </span>
+        <a href={`mailto:${site.email}`}>{site.email}</a>
+      </p>
+    </div>
+  </footer>
+</Layout>
+
+<script>
+  import artworks from '../data/artworks.json';
+  import { formatArtworkDate } from '../utils/formatArtworkDate';
+
+  const THEME_KEY = 'theme';
+
+  function syncThemeToggle() {
+    const btn = document.getElementById('theme-toggle');
+    if (!btn) return;
+    const dark = document.documentElement.getAttribute('data-theme') === 'dark';
+    btn.setAttribute('aria-pressed', String(dark));
+    btn.setAttribute(
+      'aria-label',
+      dark ? 'Switch to light theme' : 'Switch to dark theme',
+    );
+  }
+
+  document.getElementById('theme-toggle')?.addEventListener('click', () => {
+    const next =
+      document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', next);
+    try {
+      localStorage.setItem(THEME_KEY, next);
+    } catch {
+      /* ignore */
+    }
+    syncThemeToggle();
+  });
+
+  syncThemeToggle();
+
+  try {
+    const mq = window.matchMedia('(prefers-color-scheme: dark)');
+    mq.addEventListener('change', () => {
+      if (localStorage.getItem(THEME_KEY)) return;
+      document.documentElement.setAttribute('data-theme', mq.matches ? 'dark' : 'light');
+      syncThemeToggle();
+    });
+  } catch {
+    /* ignore */
+  }
+
+  const lightbox = document.getElementById('lightbox');
+  const lbImg = document.getElementById('lightbox-img');
+  const lbTitle = document.getElementById('lb-title');
+  const lbDate = document.getElementById('lb-date');
+  const lbDateWrap = document.getElementById('lb-date-wrap');
+  const lbDimensionsWrap = document.getElementById('lb-dimensions-wrap');
+  const lbDimensions = document.getElementById('lb-dimensions');
+  const lbMaterials = document.getElementById('lb-materials');
+  const lbSourceWrap = document.getElementById('lb-source-wrap');
+  const lbSourceLabel = document.getElementById('lb-source-label');
+  const lbSourceImages = document.getElementById('lb-source-images');
+  const lbZoomViewport = document.getElementById('lb-zoom-viewport');
+
+  let current = 0;
+
+  const LB_PAN_CLICK_THRESHOLD = 8;
+  /** Zoomed width ≈ this × fitted width, capped at native resolution (lower = less zoom). */
+  const LB_ZOOM_OVER_FIT = 2;
+
+  let lbPanDragging = false;
+  let lbPanLastX = 0;
+  let lbPanLastY = 0;
+  let lbPanDragDistance = 0;
+  let lbPanSuppressClick = false;
+
+  function teardownLbPanListeners() {
+    document.removeEventListener('mousemove', onLbPanMove);
+    document.removeEventListener('mouseup', onLbPanEnd);
+  }
+
+  function onLbPanMove(e) {
+    if (!lbPanDragging) return;
+    const dx = e.clientX - lbPanLastX;
+    const dy = e.clientY - lbPanLastY;
+    lbPanLastX = e.clientX;
+    lbPanLastY = e.clientY;
+    lbPanDragDistance += Math.abs(dx) + Math.abs(dy);
+    lbZoomViewport.scrollLeft -= dx;
+    lbZoomViewport.scrollTop -= dy;
+  }
+
+  function onLbPanEnd() {
+    if (!lbPanDragging) return;
+    lbPanDragging = false;
+    lbZoomViewport.classList.remove('is-panning');
+    document.body.style.userSelect = '';
+    teardownLbPanListeners();
+    if (lbPanDragDistance >= LB_PAN_CLICK_THRESHOLD) {
+      lbPanSuppressClick = true;
+    }
+    lbPanDragDistance = 0;
+  }
+
+  function onLbPanStart(e) {
+    if (!lbZoomViewport.classList.contains('is-zoomed')) return;
+    if (e.button !== 0) return;
+    e.preventDefault();
+    lbPanDragging = true;
+    lbPanDragDistance = 0;
+    lbPanLastX = e.clientX;
+    lbPanLastY = e.clientY;
+    lbZoomViewport.classList.add('is-panning');
+    document.body.style.userSelect = 'none';
+    document.addEventListener('mousemove', onLbPanMove);
+    document.addEventListener('mouseup', onLbPanEnd);
+  }
+
+  function resetLightboxZoom() {
+    teardownLbPanListeners();
+    lbPanDragging = false;
+    lbZoomViewport.classList.remove('is-panning');
+    document.body.style.userSelect = '';
+    lbPanDragDistance = 0;
+    lbPanSuppressClick = false;
+    lbZoomViewport.classList.remove('is-zoomed');
+    lbImg.style.width = '';
+    lbImg.style.height = '';
+    lbImg.style.maxWidth = '';
+    lbImg.style.maxHeight = '';
+    lbZoomViewport.scrollLeft = 0;
+    lbZoomViewport.scrollTop = 0;
+  }
+
+  /**
+   * Zoom in so the image pixel under the pointer stays under the pointer (object-fit: contain math).
+   * Keyboard zoom uses the image center. Double rAF waits for layout after size change.
+   */
+  function toggleLightboxZoom(e) {
+    if (!lbImg.complete || lbImg.naturalWidth < 2) return;
+    if (lbZoomViewport.classList.contains('is-zoomed')) {
+      resetLightboxZoom();
+      lbImg.title = 'Click to zoom in at that spot. When zoomed: drag to pan; click without dragging to zoom out.';
+      return;
+    }
+
+    const nw = lbImg.naturalWidth;
+    const nh = lbImg.naturalHeight;
+    const imgRect = lbImg.getBoundingClientRect();
+
+    let clientX;
+    let clientY;
+    if (e && 'clientX' in e && typeof e.clientX === 'number') {
+      clientX = e.clientX;
+      clientY = e.clientY;
+    } else {
+      clientX = imgRect.left + imgRect.width / 2;
+      clientY = imgRect.top + imgRect.height / 2;
+    }
+
+    const scale = Math.min(imgRect.width / nw, imgRect.height / nh);
+    const safeScale = Number.isFinite(scale) && scale > 0 ? scale : 1;
+    const dispW = nw * safeScale;
+    const dispH = nh * safeScale;
+    const padX = (imgRect.width - dispW) / 2;
+    const padY = (imgRect.height - dispH) / 2;
+    let ix = (clientX - imgRect.left - padX) / safeScale;
+    let iy = (clientY - imgRect.top - padY) / safeScale;
+    ix = Math.min(nw, Math.max(0, ix));
+    iy = Math.min(nh, Math.max(0, iy));
+
+    const zoomW = Math.min(nw, dispW * LB_ZOOM_OVER_FIT);
+    const zoomH = (zoomW / nw) * nh;
+
+    lbImg.style.maxWidth = 'none';
+    lbImg.style.maxHeight = 'none';
+    lbImg.style.width = `${zoomW}px`;
+    lbImg.style.height = 'auto';
+    lbZoomViewport.classList.add('is-zoomed');
+    lbImg.title = 'Drag to pan; click without dragging to zoom out';
+
+    const applyScroll = () => {
+      const vp = lbZoomViewport.getBoundingClientRect();
+      const contentX = (ix / nw) * zoomW;
+      const contentY = (iy / nh) * zoomH;
+      const sl = contentX - (clientX - vp.left);
+      const st = contentY - (clientY - vp.top);
+      const maxL = Math.max(0, lbZoomViewport.scrollWidth - lbZoomViewport.clientWidth);
+      const maxT = Math.max(0, lbZoomViewport.scrollHeight - lbZoomViewport.clientHeight);
+      lbZoomViewport.scrollLeft = Math.min(maxL, Math.max(0, sl));
+      lbZoomViewport.scrollTop = Math.min(maxT, Math.max(0, st));
+    };
+
+    requestAnimationFrame(() => {
+      requestAnimationFrame(applyScroll);
+    });
+  }
+
+  function decodeHashId() {
+    const raw = location.hash.slice(1);
+    if (!raw) return '';
+    try {
+      return decodeURIComponent(raw);
+    } catch {
+      return raw;
+    }
+  }
+
+  /** After closing the lightbox, drop #hash only when it pointed at an artwork card. */
+  function stripArtworkHashIfPresent() {
+    const id = decodeHashId();
+    if (!id || !history.replaceState) return;
+    const el = document.getElementById(id);
+    if (el?.classList.contains('artwork-card')) {
+      history.replaceState(null, '', location.pathname + location.search);
+    }
+  }
+
+  function getSourceUrls(a) {
+    if (Array.isArray(a.sources) && a.sources.length > 0) {
+      return a.sources.filter(Boolean);
+    }
+    if (a.source) return [a.source];
+    return [];
+  }
+
+  /** Digital works use pixel→cm only for wall scale; omit dimensions in the viewer. */
+  function isDigitalMaterials(materials) {
+    return typeof materials === 'string' && materials.trim().toLowerCase() === 'digital';
+  }
+
+  function closeLightboxVisual() {
+    lightbox.setAttribute('aria-hidden', 'true');
+    document.body.style.overflow = '';
+    lbImg.tabIndex = -1;
+    resetLightboxZoom();
+  }
+
+  function open(index) {
+    current = index;
+    update();
+    lightbox.setAttribute('aria-hidden', 'false');
+    document.body.style.overflow = 'hidden';
+    lbImg.tabIndex = 0;
+  }
+
+  function close() {
+    closeLightboxVisual();
+    stripArtworkHashIfPresent();
+  }
+
+  function update() {
+    resetLightboxZoom();
+    lbImg.title = 'Click to zoom in at that spot. When zoomed: drag to pan; click without dragging to zoom out.';
+    const a = artworks[current];
+    lbImg.src = a.image;
+    lbImg.alt = a.title;
+    lbTitle.textContent = a.title;
+    const dateStr = formatArtworkDate(a);
+    lbDate.textContent = dateStr;
+    lbDateWrap.style.display = dateStr.trim() !== '' ? '' : 'none';
+    const hasDims =
+      !isDigitalMaterials(a.materials) &&
+      a.dimensions != null &&
+      String(a.dimensions).trim() !== '';
+    lbDimensionsWrap.style.display = hasDims ? '' : 'none';
+    lbDimensions.textContent = hasDims ? String(a.dimensions) : '';
+    lbMaterials.textContent = a.materials;
+
+    const sourceUrls = getSourceUrls(a);
+    if (sourceUrls.length > 0) {
+      lbSourceWrap.style.display = '';
+      lbSourceLabel.textContent =
+        sourceUrls.length > 1 ? 'Source pictures' : 'Source picture';
+      lbSourceImages.replaceChildren();
+      sourceUrls.forEach((url, i) => {
+        const img = document.createElement('img');
+        img.src = url;
+        img.alt = `Source reference ${i + 1} for ${a.title}`;
+        lbSourceImages.appendChild(img);
+      });
+    } else {
+      lbSourceWrap.style.display = 'none';
+      lbSourceImages.replaceChildren();
+    }
+
+    if (lightbox.getAttribute('aria-hidden') === 'false' && history.replaceState) {
+      const card = document.querySelector(`.artwork-card[data-index="${current}"]`);
+      if (card?.id) {
+        history.replaceState(null, '', `#${card.id}`);
+      }
+    }
+  }
+
+  function go(dir) {
+    current = (current + dir + artworks.length) % artworks.length;
+    update();
+  }
+
+  function applyLocationHash() {
+    const id = decodeHashId();
+    if (!id) {
+      if (lightbox.getAttribute('aria-hidden') === 'false') {
+        closeLightboxVisual();
+      }
+      return;
+    }
+    const el = document.getElementById(id);
+    if (!el) return;
+    if (el.classList.contains('artwork-card')) {
+      const idx = parseInt(el.dataset.index, 10);
+      if (!Number.isNaN(idx)) open(idx);
+      return;
+    }
+    if (lightbox.getAttribute('aria-hidden') === 'false') {
+      closeLightboxVisual();
+    }
+    el.scrollIntoView({ block: 'start', behavior: 'smooth' });
+  }
+
+  lbZoomViewport.addEventListener('mousedown', onLbPanStart);
+
+  lbImg.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (lbZoomViewport.classList.contains('is-zoomed') && lbPanSuppressClick) {
+      lbPanSuppressClick = false;
+      return;
+    }
+    toggleLightboxZoom(e);
+  });
+
+  lbImg.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      toggleLightboxZoom();
+    }
+  });
+
+  document.querySelectorAll('.artwork-card').forEach((card) => {
+    card.addEventListener('click', () => {
+      const idx = parseInt(card.dataset.index, 10);
+      if (card.id && history.replaceState) {
+        history.replaceState(null, '', `#${card.id}`);
+      }
+      open(idx);
+    });
+  });
+
+  document.querySelector('.lightbox-close').addEventListener('click', close);
+  document.querySelector('.lightbox-prev').addEventListener('click', () => go(-1));
+  document.querySelector('.lightbox-next').addEventListener('click', () => go(1));
+  document.querySelector('.lightbox-prev-mobile').addEventListener('click', () => go(-1));
+  document.querySelector('.lightbox-next-mobile').addEventListener('click', () => go(1));
+
+  lightbox.addEventListener('click', (e) => {
+    if (e.target === lightbox) close();
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (lightbox.getAttribute('aria-hidden') !== 'false') return;
+    if (e.key === 'Escape') close();
+    if (e.key === 'ArrowLeft') go(-1);
+    if (e.key === 'ArrowRight') go(1);
+  });
+
+  let touchX = 0;
+  lightbox.addEventListener('touchstart', (e) => {
+    touchX = e.changedTouches[0].screenX;
+  }, { passive: true });
+  lightbox.addEventListener('touchend', (e) => {
+    const diff = e.changedTouches[0].screenX - touchX;
+    if (Math.abs(diff) > 50) go(diff > 0 ? -1 : 1);
+  });
+
+  window.addEventListener('hashchange', applyLocationHash);
+  applyLocationHash();
+</script>
+
+<style>
+  /* ---- Layout ---- */
+  .container {
+    max-width: var(--max-width);
+    margin: 0 auto;
+    padding: 0 24px;
+  }
+
+  /* ---- Header ---- */
+  .header {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background: var(--color-header-bg);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--color-border);
+    height: var(--header-height);
+  }
+
+  .header-inner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 100%;
+  }
+
+  .header-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .theme-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    margin: 0;
+    padding: 0;
+    border-radius: 8px;
+    color: var(--color-text-secondary);
+    transition:
+      color 0.2s ease,
+      background 0.2s ease;
+  }
+
+  .theme-toggle:hover {
+    color: var(--color-text);
+    background: var(--color-surface);
+  }
+
+  .theme-toggle:focus-visible {
+    outline: 2px solid var(--color-text-muted);
+    outline-offset: 2px;
+  }
+
+  .theme-toggle-icon {
+    display: block;
+  }
+
+  .theme-toggle-sun {
+    display: none;
+  }
+
+  :global(html[data-theme='dark']) .theme-toggle-moon {
+    display: none;
+  }
+
+  :global(html[data-theme='dark']) .theme-toggle-sun {
+    display: block;
+  }
+
+  .header-name {
+    font-size: 1.05rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+  }
+
+  .header-nav {
+    display: flex;
+    gap: 28px;
+  }
+
+  .header-nav a {
+    font-size: 0.85rem;
+    color: var(--color-text-secondary);
+    letter-spacing: 0.04em;
+    transition: color 0.2s;
+  }
+
+  .header-nav a:hover {
+    color: var(--color-text);
+  }
+
+  /* Hash links (#about, #works, #coal, #lamp, …): land below sticky header */
+  #about,
+  #works,
+  .gallery-section[id],
+  .artwork-card[id] {
+    scroll-margin-top: calc(var(--header-height) + 16px);
+  }
+
+  /* ---- Sections ---- */
+  .section-label {
+    font-size: clamp(1rem, 0.9rem + 0.55vw, 1.25rem);
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--color-text-muted);
+    margin-bottom: 36px;
+  }
+
+  /* ---- About ---- */
+  .about {
+    padding: 64px 0 48px;
+  }
+
+  .about .section-label {
+    margin-bottom: 14px;
+  }
+
+  .about-content {
+    max-width: 520px;
+  }
+
+  .about-content p {
+    margin-bottom: 0.5rem;
+    color: var(--color-text-secondary);
+    font-size: 1rem;
+    line-height: 1.5;
+  }
+
+  .about-content p:last-child {
+    margin-bottom: 0;
+  }
+
+  .about-contact {
+    margin-top: 1.1rem;
+    margin-bottom: 0;
+    padding-top: 1rem;
+    border-top: 1px solid var(--color-border);
+    font-size: 0.95rem;
+    color: var(--color-text-secondary);
+    line-height: 1.5;
+  }
+
+  .about-contact-name {
+    display: block;
+    margin-bottom: 0.25rem;
+    color: var(--color-text);
+    font-weight: 500;
+  }
+
+  .about-contact-email {
+    color: inherit;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+
+  .about-contact-email:hover {
+    color: var(--color-text);
+  }
+
+  /* ---- Gallery ---- */
+  .gallery {
+    padding: 64px 0 100px;
+    border-top: 1px solid var(--color-border);
+  }
+
+  .gallery-empty {
+    color: var(--color-text-muted);
+    font-size: 0.95rem;
+  }
+
+  .gallery-section + .gallery-section {
+    margin-top: 48px;
+  }
+
+  .gallery-section-heading {
+    font-size: 1rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    color: var(--color-text-secondary);
+    margin-bottom: 20px;
+    line-height: 1.35;
+    max-width: 42rem;
+  }
+
+  /*
+   * Row-major flex: each line’s height follows the tallest tile. align-items: flex-end
+   * bottom-aligns cards so the visible step from any card bottom to the next row’s top
+   * equals --wall-contact-gap (row-gap), not extra slack under shorter neighbors.
+   */
+  .gallery-wall {
+    /* Multiply tile base size and gaps; --dim-scale ratios between works stay the same. */
+    --wall-layout-scale: 1.3;
+    --wall-contact-gap: calc(24px * var(--wall-layout-scale));
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: flex-end;
+    align-content: flex-start;
+    row-gap: var(--wall-contact-gap);
+    column-gap: var(--wall-contact-gap);
+    width: fit-content;
+    max-width: 100%;
+    margin-inline: auto;
+    padding: 6px 0 26px;
+    --wall-art-base-width: calc(var(--wall-layout-scale) * min(360px, 46vw));
+  }
+
+  .artwork-card {
+    position: relative;
+    z-index: 0;
+    overflow: visible;
+    flex: 0 0 auto;
+    width: calc(var(--dim-scale, 1) * var(--wall-art-base-width));
+    max-width: min(94vw, calc(var(--dim-scale, 1) * var(--wall-art-base-width) * 1.08));
+    background: var(--color-surface);
+    text-align: left;
+    border-radius: 5px;
+    box-shadow: var(--shadow-artwork);
+    transition:
+      transform 0.2s ease,
+      box-shadow 0.2s ease;
+  }
+
+  .artwork-card:hover {
+    transform: scale(1.02);
+    z-index: 2;
+    box-shadow: var(--shadow-artwork-hover);
+  }
+
+  /* Light from upper-right: tight falloff, stays close to the canvas edge */
+  .artwork-card--canvas {
+    box-shadow: var(--shadow-artwork-canvas);
+  }
+
+  .artwork-card--canvas:hover {
+    box-shadow: var(--shadow-artwork-canvas-hover);
+  }
+
+  /* Digital & charcoal: softer ambient lift than canvas (no stretched fabric edge) */
+  .artwork-card--digital,
+  .artwork-card--charcoal {
+    box-shadow: var(--shadow-artwork-soft);
+  }
+
+  .artwork-card--digital:hover,
+  .artwork-card--charcoal:hover {
+    box-shadow: var(--shadow-artwork-soft-hover);
+  }
+
+  .artwork-image-wrap {
+    width: 100%;
+    overflow: hidden;
+    border-radius: 4px;
+  }
+
+  .artwork-image-wrap img {
+    display: block;
+    width: 100%;
+    height: auto;
+  }
+
+  .artwork-caption {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    padding: 48px 16px 14px;
+    background: linear-gradient(transparent, var(--artwork-caption-fade));
+    color: var(--artwork-caption-text);
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+  }
+
+  .artwork-card:hover .artwork-caption {
+    opacity: 1;
+  }
+
+  .artwork-card-title {
+    font-size: 0.9rem;
+    font-weight: 500;
+  }
+
+  .artwork-card-year {
+    font-size: 0.8rem;
+    opacity: 0.8;
+  }
+
+  /* ---- Lightbox ---- */
+  .lightbox {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    background: rgba(0, 0, 0, 0.94);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s ease;
+  }
+
+  .lightbox[aria-hidden='false'] {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .lightbox-close {
+    position: absolute;
+    top: 16px;
+    right: 20px;
+    font-size: 2.2rem;
+    color: #fff;
+    z-index: 10;
+    opacity: 0.6;
+    transition: opacity 0.2s;
+    line-height: 1;
+  }
+
+  .lightbox-close:hover {
+    opacity: 1;
+  }
+
+  .lightbox-body {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    max-width: 1100px;
+    flex: 1;
+    padding: 60px 12px 20px;
+    min-height: 0;
+  }
+
+  .lightbox-nav {
+    flex-shrink: 0;
+    font-size: 2.8rem;
+    color: #fff;
+    opacity: 0.4;
+    transition: opacity 0.2s;
+    padding: 16px;
+    line-height: 1;
+  }
+
+  .lightbox-nav:hover {
+    opacity: 1;
+  }
+
+  .lightbox-content {
+    flex: 1;
+    display: flex;
+    gap: 40px;
+    align-items: center;
+    min-height: 0;
+    min-width: 0;
+    overflow-y: auto;
+  }
+
+  .lightbox-image-area {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 0;
+    min-height: 0;
+  }
+
+  .lightbox-zoom-viewport {
+    flex: 1;
+    width: 100%;
+    min-width: 0;
+    min-height: 0;
+    max-height: 78vh;
+    overflow: auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-x pan-y;
+    border-radius: 2px;
+  }
+
+  .lightbox-zoom-viewport:not(.is-zoomed) {
+    cursor: zoom-in;
+  }
+
+  .lightbox-zoom-viewport.is-zoomed {
+    cursor: grab;
+    align-items: flex-start;
+    justify-content: flex-start;
+    user-select: none;
+  }
+
+  .lightbox-zoom-viewport.is-zoomed.is-panning {
+    cursor: grabbing;
+  }
+
+  .lightbox-zoom-viewport img {
+    display: block;
+    max-width: 100%;
+    max-height: 78vh;
+    width: auto;
+    height: auto;
+    object-fit: contain;
+    margin: auto;
+    border-radius: 2px;
+    outline: none;
+  }
+
+  .lightbox-zoom-viewport.is-zoomed img {
+    margin: 0;
+    max-width: none;
+    max-height: none;
+    cursor: grab;
+    pointer-events: auto;
+  }
+
+  .lightbox-zoom-viewport.is-zoomed.is-panning img {
+    cursor: grabbing;
+  }
+
+  .lightbox-info {
+    flex-shrink: 0;
+    width: 220px;
+    color: #fff;
+  }
+
+  .lightbox-title {
+    font-size: 1.2rem;
+    font-weight: 500;
+    margin-bottom: 28px;
+    line-height: 1.4;
+  }
+
+  .lightbox-details {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .detail-row dt,
+  .detail-label {
+    font-size: 0.65rem;
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.45);
+    margin-bottom: 3px;
+  }
+
+  .detail-row dd {
+    font-size: 0.95rem;
+  }
+
+  .lightbox-source {
+    margin-top: 24px;
+    padding-top: 24px;
+    border-top: 1px solid rgba(255, 255, 255, 0.12);
+  }
+
+  .lightbox-source-images {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-top: 6px;
+  }
+
+  .lightbox-source-images img {
+    max-width: 100%;
+    max-height: 110px;
+    object-fit: contain;
+    border-radius: 3px;
+  }
+
+  .lightbox-mobile-nav {
+    display: none;
+  }
+
+  /* ---- Footer ---- */
+  .footer {
+    padding: 36px 0;
+    border-top: 1px solid var(--color-border);
+    text-align: center;
+    font-size: 0.8rem;
+    color: var(--color-text-muted);
+  }
+
+  .footer-line {
+    margin: 0;
+  }
+
+  .footer-line + .footer-line {
+    margin-top: 0.4rem;
+  }
+
+  .footer a {
+    color: inherit;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+
+  .footer a:hover {
+    color: var(--color-text-secondary);
+  }
+
+  /* ---- Responsive ---- */
+  @media (max-width: 860px) {
+    .lightbox-content {
+      flex-direction: column;
+      align-items: stretch;
+      justify-content: flex-start;
+      padding-top: 8px;
+    }
+
+    .lightbox-zoom-viewport {
+      max-height: 50vh;
+    }
+
+    .lightbox-zoom-viewport:not(.is-zoomed) img {
+      max-height: 50vh;
+    }
+
+    .lightbox-info {
+      width: 100%;
+      max-width: 440px;
+      margin: 0 auto;
+    }
+
+    .lightbox-nav {
+      display: none;
+    }
+
+    .lightbox-mobile-nav {
+      display: flex;
+      justify-content: center;
+      gap: 24px;
+      padding: 12px 20px 24px;
+    }
+
+    .lightbox-nav-mobile {
+      color: rgba(255, 255, 255, 0.6);
+      font-size: 0.85rem;
+      padding: 8px 16px;
+      transition: color 0.2s;
+    }
+
+    .lightbox-nav-mobile:hover {
+      color: #fff;
+    }
+  }
+
+  @media (max-width: 640px) {
+    .about {
+      padding: 48px 0 36px;
+    }
+
+    .gallery {
+      padding: 48px 0 72px;
+    }
+
+    .gallery-wall {
+      --wall-contact-gap: calc(18px * var(--wall-layout-scale));
+      padding-bottom: 20px;
+      --wall-art-base-width: calc(var(--wall-layout-scale) * min(300px, 86vw));
+    }
+
+    .artwork-caption {
+      opacity: 1;
+    }
+  }
+</style>

@@ -1,0 +1,17 @@
+{
+  "name": "unfocused-art-webpage",
+  "type": "module",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "ASTRO_TELEMETRY_DISABLED=1 astro dev",
+    "dev:lan": "ASTRO_TELEMETRY_DISABLED=1 astro dev --host",
+    "build": "ASTRO_TELEMETRY_DISABLED=1 astro build",
+    "preview": "ASTRO_TELEMETRY_DISABLED=1 astro preview",
+    "preview:lan": "ASTRO_TELEMETRY_DISABLED=1 astro preview --host"
+  },
+  "dependencies": {
+    "astro": "^5.7.10",
+    "image-size": "^2.0.2"
+  }
+}
