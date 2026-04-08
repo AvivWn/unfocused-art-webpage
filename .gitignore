@@ -1,0 +1,39 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Static assets (artwork files, favicons, etc.) — not tracked; copy or sync locally after clone
+public/
+
+# Astro generated (types, content cache, etc.)
+.astro/
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor / IDE (local settings; remove these lines if your team commits shared configs)
+.idea/
+*.swp
+*.swo
+*~
+
+# Optional tooling
+.vercel
+.netlify
+.turbo
+.cache/
