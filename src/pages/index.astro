@@ -206,7 +206,12 @@ const thumbnailPreloads = artworksRaw
 
         {gallerySections.map((section, sectionIndex) => (
           <div class="gallery-section" id={gallerySectionFragmentIds[sectionIndex]}>
-            <h3 class="gallery-section-heading">{section.title}</h3>
+            <h3 class="gallery-section-heading">
+              <span class="gallery-section-heading-title">{section.title}</span>
+              <span class="gallery-section-count">
+                {section.cards.length} {section.cards.length === 1 ? 'work' : 'works'}
+              </span>
+            </h3>
             <div
               class="gallery-wall"
               style={{
@@ -1272,8 +1277,8 @@ const thumbnailPreloads = artworksRaw
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 40px;
-    height: 40px;
+    width: 44px;
+    height: 44px;
     margin: 0;
     padding: 0;
     border-radius: 8px;
@@ -1310,18 +1315,18 @@ const thumbnailPreloads = artworksRaw
   }
 
   .header-name {
-    font-size: 1.05rem;
+    font-size: 1.35rem;
     font-weight: 600;
     letter-spacing: 0.02em;
   }
 
   .header-nav {
     display: flex;
-    gap: 28px;
+    gap: 32px;
   }
 
   .header-nav a {
-    font-size: 0.85rem;
+    font-size: 0.92rem;
     color: var(--color-text-secondary);
     letter-spacing: 0.04em;
     transition: color 0.2s;
@@ -1352,10 +1357,6 @@ const thumbnailPreloads = artworksRaw
   /* ---- About ---- */
   .about {
     padding: 64px 0 48px;
-  }
-
-  .about .section-label {
-    margin-bottom: 14px;
   }
 
   .about-content {
@@ -1424,17 +1425,33 @@ const thumbnailPreloads = artworksRaw
   }
 
   .gallery-section + .gallery-section {
-    margin-top: 48px;
+    margin-top: 72px;
   }
 
   .gallery-section-heading {
-    font-size: 1rem;
+    font-size: 1.05rem;
     font-weight: 600;
     letter-spacing: 0.02em;
+    text-transform: none;
     color: var(--color-text-secondary);
-    margin-bottom: 20px;
+    margin-bottom: 28px;
     line-height: 1.35;
     max-width: 42rem;
+  }
+
+  .gallery-section-heading-title {
+    display: block;
+    color: var(--color-text);
+  }
+
+  .gallery-section-count {
+    display: block;
+    margin-top: 0.3rem;
+    font-size: 0.8rem;
+    font-weight: 500;
+    letter-spacing: 0.02em;
+    text-transform: lowercase;
+    color: var(--color-text-muted);
   }
 
   /*
@@ -1943,7 +1960,7 @@ const thumbnailPreloads = artworksRaw
       display: grid;
       grid-template-rows: minmax(0, 1fr) auto;
       align-items: stretch;
-      gap: 6px;
+      gap: 20px;
       overflow: hidden;
     }
 
@@ -1955,6 +1972,7 @@ const thumbnailPreloads = artworksRaw
       align-items: stretch;
       justify-content: center;
       overflow: hidden;
+      padding: 0 6px 4px;
     }
 
     .lightbox-zoom-viewport {
@@ -1975,20 +1993,20 @@ const thumbnailPreloads = artworksRaw
       margin: 0;
       flex: 0 0 auto;
       overflow: visible;
-      padding: 0 2px 2px;
+      padding: 4px 8px 12px;
     }
 
     .lightbox-title {
       display: block;
       font-size: 0.88rem;
-      margin-bottom: 6px;
-      line-height: 1.3;
+      margin-bottom: 14px;
+      line-height: 1.35;
     }
 
     .lightbox-details {
       display: grid;
       grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 4px 10px;
+      gap: 12px 16px;
     }
 
     .detail-row {
@@ -1999,20 +2017,20 @@ const thumbnailPreloads = artworksRaw
     .detail-label {
       font-size: 0.55rem;
       letter-spacing: 0.1em;
-      margin-bottom: 1px;
+      margin-bottom: 4px;
     }
 
     .detail-row dd {
       font-size: 0.78rem;
-      line-height: 1.25;
+      line-height: 1.35;
     }
 
     .lightbox-source {
       display: flex;
       align-items: center;
-      gap: 6px;
-      margin-top: 5px;
-      padding-top: 5px;
+      gap: 10px;
+      margin-top: 16px;
+      padding-top: 16px;
     }
 
     .lightbox-source .detail-label {
@@ -2055,8 +2073,8 @@ const thumbnailPreloads = artworksRaw
       justify-content: space-between;
       gap: 16px;
       padding:
-        6px 12px
-        calc(6px + env(safe-area-inset-bottom, 0px));
+        12px 16px
+        calc(10px + env(safe-area-inset-bottom, 0px));
       border-top: 1px solid rgba(255, 255, 255, 0.08);
     }
 
@@ -2110,21 +2128,21 @@ const thumbnailPreloads = artworksRaw
     }
 
     .header-nav a {
-      font-size: 0.78rem;
+      font-size: 0.84rem;
     }
 
     .header-name {
-      font-size: 0.95rem;
+      font-size: 1.15rem;
     }
 
     .theme-toggle {
-      width: 34px;
-      height: 34px;
+      width: 38px;
+      height: 38px;
     }
 
     .theme-toggle svg {
-      width: 18px;
-      height: 18px;
+      width: 19px;
+      height: 19px;
     }
 
     .about {
@@ -2156,12 +2174,16 @@ const thumbnailPreloads = artworksRaw
     }
 
     .gallery-section + .gallery-section {
-      margin-top: 36px;
+      margin-top: 52px;
     }
 
     .gallery-section-heading {
-      font-size: 0.88rem;
-      margin-bottom: 14px;
+      font-size: 0.95rem;
+      margin-bottom: 20px;
+    }
+
+    .gallery-section-count {
+      font-size: 0.75rem;
     }
 
     .gallery-wall {
@@ -2185,18 +2207,27 @@ const thumbnailPreloads = artworksRaw
       font-size: 1.75rem;
     }
 
+    .lightbox-content {
+      gap: 16px;
+    }
+
+    .lightbox-info {
+      padding: 2px 6px 10px;
+    }
+
     .lightbox-title {
       font-size: 0.82rem;
-      margin-bottom: 4px;
+      margin-bottom: 12px;
     }
 
     .lightbox-details {
-      gap: 3px 8px;
+      gap: 10px 12px;
     }
 
     .detail-row dt,
     .detail-label {
       font-size: 0.52rem;
+      margin-bottom: 3px;
     }
 
     .detail-row dd {
@@ -2204,9 +2235,9 @@ const thumbnailPreloads = artworksRaw
     }
 
     .lightbox-source {
-      margin-top: 4px;
-      padding-top: 4px;
-      gap: 6px;
+      margin-top: 14px;
+      padding-top: 14px;
+      gap: 8px;
     }
 
     .lightbox-source-images {

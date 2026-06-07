@@ -58,6 +58,7 @@ Each entry has these fields:
 | `thumbnail`  | string (optional)| Thumbnail on the main page; if omitted, `image` is used (same formats). If set and different from `image`, the wall shows the **thumbnail** at its **natural aspect ratio** (full width, height from the file)—it is **not** cropped to match the full image. |
 | `source`     | string \| null   | Optional single reference image (same formats as `image`). Ignored if `sources` is set. |
 | `sources`    | string[] (optional) | Multiple reference images, shown in order in the viewer. Use this **or** `source`, not both. |
+| `layout`     | object (optional)   | Wall position in **grid units** (1 unit = 1 cm): `{ "x": 0, "y": 44 }`. When a section already has manual layouts, **add a `layout` for new works** by placing them near existing neighbors (dev **Reorganize** tool, or copy/adjust coordinates from siblings). Existing positions are preserved; auto-pack only fills in works that omit `layout`. |
 
 The viewer lists this as **Date**: with `month` set it shows e.g. `February 2022`; with only `year` it shows e.g. `2022`.
 
@@ -70,6 +71,7 @@ The viewer lists this as **Date**: with `month` set it shows e.g. `February 2022
    - **`source`** — one reference photo, e.g. `source.jpg`, or `null`.
    - **`source-1.jpg`**, **`source-2.jpg`**, etc. — optional; list all paths in JSON as **`sources`**: `["/artworks/slug/source-1.webp", "/artworks/slug/source-2.webp"]`.
 3. Add an entry to `src/data/artworks.json` with paths that match the real filenames, e.g. `/artworks/golden-hour/full.webp`.
+4. If the section already has `layout` on other works, give the new entry a `layout` too — refer to nearby pieces (same row/column alignment, `PACK_GAP` = 2 units between edges). Do **not** rely on full-section auto layout once a wall has been arranged by hand.
 
 Example folder `public/artworks/golden-hour/` and entry:
 

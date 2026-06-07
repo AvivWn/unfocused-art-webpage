@@ -1,4 +1,4 @@
-import { GALLERY_PACK_GAP } from '../constants/gallery';
+import { GALLERY_MIN_TILE_WIDTH_CM, GALLERY_PACK_GAP } from '../constants/gallery';
 import { ASSUMED_PRINT_DPI, getImagePixelDimensions } from './getImagePixelDimensions';
 import { parseDimensionsToCm } from './parseArtworkDimensions';
 
@@ -90,7 +90,10 @@ function dimensionsToGridUnits(
   thumbAspect: number | null,
   gridResolution: number,
 ): { w: number; h: number } {
-  const w = Math.max(1, Math.min(gridResolution, Math.round(wCm)));
+  const w = Math.max(
+    GALLERY_MIN_TILE_WIDTH_CM,
+    Math.min(gridResolution, Math.round(wCm)),
+  );
   const h =
     thumbAspect != null && Number.isFinite(thumbAspect) && thumbAspect > 0
       ? Math.max(1, w * thumbAspect)
@@ -148,8 +151,12 @@ function candidateXs(item: PackItem, placed: PackedItem[], gridResolution: numbe
 }
 
 /** Skyline bottom-left pack: lowest y, then leftmost x. */
-function packWithSkyline(items: PackItem[], gridResolution: number): PackedItem[] | null {
-  const placed: PackedItem[] = [];
+function packWithSkyline(
+  items: PackItem[],
+  gridResolution: number,
+  initialPlaced: PackedItem[] = [],
+): PackedItem[] | null {
+  const placed: PackedItem[] = [...initialPlaced];
 
   for (const item of items) {
     let best: { x: number; y: number } | null = null;
@@ -345,6 +352,10 @@ function sectionAllManual(cards: GalleryCard[]): boolean {
   return cards.length > 0 && cards.every((card) => hasManualLayout(card.artwork));
 }
 
+function sectionHasAnyManual(cards: GalleryCard[]): boolean {
+  return cards.some((card) => hasManualLayout(card.artwork));
+}
+
 function placeFromManualItems(items: PackItem[]): PackedItem[] {
   return items.map((item) => {
     const manual = readManualLayout(item.artwork);
@@ -353,6 +364,40 @@ function placeFromManualItems(items: PackItem[]): PackedItem[] {
     }
     return { ...item, x: manual.x, y: manual.y };
   });
+}
+
+/** Keep fixed manual positions; pack only works without `layout` around them. */
+function placePreservingManualLayouts(
+  items: PackItem[],
+  gridResolution: number,
+): PackedItem[] {
+  const fixed: PackedItem[] = [];
+  const flexible: PackItem[] = [];
+
+  for (const item of items) {
+    const manual = readManualLayout(item.artwork);
+    if (manual) {
+      fixed.push({ ...item, x: manual.x, y: manual.y });
+    } else {
+      flexible.push(item);
+    }
+  }
+
+  if (flexible.length === 0) return fixed;
+
+  const packed = packWithSkyline(flexible, gridResolution, fixed);
+  if (packed) return packed;
+
+  const baseY =
+    fixed.length > 0 ? Math.max(...fixed.map((p) => p.y + p.h)) + PACK_GAP : 0;
+  return [
+    ...fixed,
+    ...flexible.map((item, i) => ({
+      ...item,
+      x: 0,
+      y: baseY + i * (item.h + PACK_GAP),
+    })),
+  ];
 }
 
 function extentsFromPlaced(placed: { x: number; y: number; w: number; h: number }[]): {
@@ -388,6 +433,11 @@ export function layoutGallerySection(
     const extents = extentsFromPlaced(placed);
     rowExtent = extents.rowExtent;
     colExtent = extents.colExtent;
+  } else if (!options?.ignoreManualLayout && sectionHasAnyManual(cards)) {
+    placed = placePreservingManualLayouts(items, gridResolution);
+    const extents = extentsFromPlaced(placed);
+    rowExtent = extents.rowExtent;
+    colExtent = extents.colExtent;
   } else {
     const optimized = optimizeLayout(items, gridResolution);
     placed = optimized.placed;
@@ -396,7 +446,18 @@ export function layoutGallerySection(
   }
 
   const final = placed.map((p) => {
-    const manual = options?.ignoreManualLayout ? null : readManualLayout(p.artwork);
+    if (options?.ignoreManualLayout) {
+      return {
+        artwork: p.artwork,
+        index: p.index,
+        x: p.x,
+        y: p.y,
+        w: p.w,
+        h: p.h,
+      };
+    }
+
+    const manual = readManualLayout(p.artwork);
     return {
       artwork: p.artwork,
       index: p.index,
