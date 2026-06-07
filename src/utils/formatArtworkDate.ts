@@ -18,27 +18,38 @@ export type ArtworkDateInput = {
   month?: number;
 };
 
-export function formatArtworkDate(artwork: ArtworkDateInput): string {
+export type ArtworkDateParts = {
+  year: string;
+  month: string | null;
+};
+
+export function getArtworkDateParts(artwork: ArtworkDateInput): ArtworkDateParts | null {
   const { year, month } = artwork;
 
   if (year == null || (typeof year === 'string' && year.trim() === '')) {
-    return '';
+    return null;
   }
 
   if (typeof year === 'string') {
     const n = Number(year);
     if (!Number.isFinite(n) || String(n) !== year.trim()) {
-      return year;
+      return { year, month: null };
     }
-    return formatYearAndOptionalMonth(n, month);
+    return splitYearAndOptionalMonth(n, month);
   }
 
-  return formatYearAndOptionalMonth(year, month);
+  return splitYearAndOptionalMonth(year, month);
 }
 
-function formatYearAndOptionalMonth(year: number, month: number | undefined): string {
+export function formatArtworkDate(artwork: ArtworkDateInput): string {
+  const parts = getArtworkDateParts(artwork);
+  if (!parts) return '';
+  return parts.month ? `${parts.month} ${parts.year}` : parts.year;
+}
+
+function splitYearAndOptionalMonth(year: number, month: number | undefined): ArtworkDateParts {
   if (month == null || !Number.isInteger(month) || month < 1 || month > 12) {
-    return String(year);
+    return { year: String(year), month: null };
   }
-  return `${MONTHS[month - 1]} ${year}`;
+  return { year: String(year), month: MONTHS[month - 1] };
 }

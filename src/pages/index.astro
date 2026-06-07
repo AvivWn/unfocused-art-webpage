@@ -2,7 +2,7 @@
 import Layout from '../layouts/Layout.astro';
 import artworksRaw from '../data/artworks.json';
 import site from '../data/site.json';
-import { formatArtworkDate } from '../utils/formatArtworkDate';
+import { formatArtworkDate, getArtworkDateParts } from '../utils/formatArtworkDate';
 import { buildGallerySections } from '../utils/buildGallerySections';
 import {
   GALLERY_DISPLAY_PX_PER_GRID_UNIT,
@@ -217,7 +217,7 @@ const thumbnailPreloads = artworksRaw
             >
               {section.placed.map(({ artwork, index, x, y, w, h }) => {
                 const thumb = artwork.thumbnail;
-                const dateLabel = formatArtworkDate(artwork);
+                const dateParts = getArtworkDateParts(artwork);
                 const eagerThumb = index < 6;
                 return (
                 <button
@@ -250,7 +250,14 @@ const thumbnailPreloads = artworksRaw
                   </div>
                   <div class="artwork-caption">
                     <span class="artwork-card-title">{artwork.title}</span>
-                    {dateLabel !== '' && <span class="artwork-card-year">{dateLabel}</span>}
+                    {dateParts && (
+                      <span class="artwork-card-year">
+                        {dateParts.month && (
+                          <span class="artwork-card-year-month">{dateParts.month}</span>
+                        )}
+                        <span class="artwork-card-year-value">{dateParts.year}</span>
+                      </span>
+                    )}
                   </div>
                 </button>
                 );
@@ -323,8 +330,14 @@ const thumbnailPreloads = artworksRaw
 
     <!-- Mobile navigation -->
     <div class="lightbox-mobile-nav">
-      <button class="lightbox-nav-mobile lightbox-prev-mobile" aria-label="Previous artwork">&#8249; Prev</button>
-      <button class="lightbox-nav-mobile lightbox-next-mobile" aria-label="Next artwork">Next &#8250;</button>
+      <button type="button" class="lightbox-nav-mobile lightbox-prev-mobile" aria-label="Previous artwork">
+        <span class="lightbox-nav-mobile-chevron" aria-hidden="true">&#8249;</span>
+        <span class="lightbox-nav-mobile-label">Previous</span>
+      </button>
+      <button type="button" class="lightbox-nav-mobile lightbox-next-mobile" aria-label="Next artwork">
+        <span class="lightbox-nav-mobile-label">Next</span>
+        <span class="lightbox-nav-mobile-chevron" aria-hidden="true">&#8250;</span>
+      </button>
     </div>
   </div>
 
@@ -739,8 +752,11 @@ const thumbnailPreloads = artworksRaw
       lbSourceImages.replaceChildren();
       sourceUrls.forEach((url, i) => {
         const img = document.createElement('img');
+        img.className = 'lightbox-source-thumb';
         img.src = url;
         img.alt = `Source reference ${i + 1} for ${a.title}`;
+        img.loading = 'lazy';
+        img.decoding = 'async';
         lbSourceImages.appendChild(img);
       });
     } else {
@@ -1440,6 +1456,7 @@ const thumbnailPreloads = artworksRaw
   }
 
   .artwork-card {
+    container-type: inline-size;
     position: absolute;
     z-index: 0;
     overflow: visible;
@@ -1447,6 +1464,10 @@ const thumbnailPreloads = artworksRaw
     top: calc(var(--ay) * var(--grid-unit));
     width: calc(var(--aw) * var(--grid-unit));
     height: calc(var(--ah) * var(--grid-unit));
+    --card-w: calc(var(--aw) * var(--grid-unit));
+    --card-h: calc(var(--ah) * var(--grid-unit));
+    /* Scale with tile width; tighter bounds on small screens */
+    --caption-size: clamp(0.6875rem, calc(var(--card-w) * 0.045), 0.9375rem);
     background: transparent;
     text-align: left;
     border: none;
@@ -1589,7 +1610,11 @@ const thumbnailPreloads = artworksRaw
     bottom: 0;
     left: 0;
     right: 0;
-    padding: 48px 16px 14px;
+    padding:
+      calc(var(--card-h) * 0.28)
+      calc(var(--card-w) * 0.045)
+      calc(var(--card-h) * 0.06);
+    gap: max(calc(var(--caption-size) * 1.25), calc(var(--card-w) * 0.07));
     background: linear-gradient(transparent, var(--artwork-caption-fade));
     color: var(--artwork-caption-text);
     display: flex;
@@ -1603,20 +1628,63 @@ const thumbnailPreloads = artworksRaw
     opacity: 1;
   }
 
+  /* Touch devices: no hover — keep titles visible on gallery tiles */
+  @media (hover: none), (pointer: coarse) {
+    .artwork-caption {
+      opacity: 1;
+    }
+
+    .artwork-card:hover {
+      transform: none;
+    }
+  }
+
   .artwork-card-title {
-    font-size: 0.9rem;
+    font-size: var(--caption-size);
     font-weight: 500;
+    line-height: 1.25;
+    min-width: 0;
+    flex: 1 1 0;
+    padding-right: max(calc(var(--caption-size) * 1.5), calc(var(--card-w) * 0.05));
+    overflow-wrap: normal;
+    word-break: normal;
   }
 
   .artwork-card-year {
-    font-size: 0.8rem;
+    font-size: calc(var(--caption-size) * 0.88);
     opacity: 0.8;
+    flex: 0 0 auto;
+    min-width: 0;
+    max-width: 46%;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    align-content: flex-end;
+    align-items: flex-end;
+    column-gap: 0.25em;
+    text-align: right;
+    line-height: 1.25;
+  }
+
+  .artwork-card-year-month,
+  .artwork-card-year-value {
+    white-space: nowrap;
+  }
+
+  /* Small tiles (e.g. Perfectionism): stack date to free width and separate from title */
+  @container (max-width: 12rem) {
+    .artwork-card-year:has(.artwork-card-year-month) {
+      flex-direction: column;
+      align-items: flex-end;
+      flex-wrap: nowrap;
+    }
   }
 
   /* ---- Lightbox ---- */
   .lightbox {
     position: fixed;
     inset: 0;
+    height: 100dvh;
     z-index: 1000;
     background: rgba(0, 0, 0, 0.94);
     display: flex;
@@ -1797,7 +1865,8 @@ const thumbnailPreloads = artworksRaw
     margin-top: 6px;
   }
 
-  .lightbox-source-images img {
+  :global(.lightbox-source-images img) {
+    display: block;
     max-width: 100%;
     max-height: 110px;
     object-fit: contain;
@@ -1836,26 +1905,143 @@ const thumbnailPreloads = artworksRaw
   }
 
   /* ---- Responsive ---- */
+  @media (min-width: 861px) {
+    .artwork-card {
+      --caption-size: clamp(0.875rem, calc(var(--card-w) * 0.052), 1.125rem);
+    }
+  }
+
   @media (max-width: 860px) {
+    .artwork-caption {
+      display: none;
+    }
+
+    .lightbox {
+      justify-content: flex-start;
+    }
+
+    .lightbox-body {
+      flex: 1;
+      min-height: 0;
+      padding:
+        calc(40px + env(safe-area-inset-top, 0px))
+        10px
+        0;
+      align-items: stretch;
+    }
+
+    .lightbox-close {
+      top: calc(6px + env(safe-area-inset-top, 0px));
+      right: calc(6px + env(safe-area-inset-right, 0px));
+      font-size: 2rem;
+      padding: 8px 12px;
+    }
+
     .lightbox-content {
+      flex: 1;
+      min-height: 0;
+      display: grid;
+      grid-template-rows: minmax(0, 1fr) auto;
+      align-items: stretch;
+      gap: 6px;
+      overflow: hidden;
+    }
+
+    .lightbox-image-area {
+      min-height: 0;
+      min-width: 0;
+      display: flex;
       flex-direction: column;
       align-items: stretch;
-      justify-content: flex-start;
-      padding-top: 8px;
+      justify-content: center;
+      overflow: hidden;
     }
 
     .lightbox-zoom-viewport {
-      max-height: 50vh;
+      flex: 1 1 0;
+      width: 100%;
+      min-height: 0;
+      max-height: none;
     }
 
     .lightbox-zoom-viewport:not(.is-zoomed) img {
-      max-height: 50vh;
+      max-height: 100%;
+      max-width: 100%;
     }
 
     .lightbox-info {
       width: 100%;
-      max-width: 440px;
-      margin: 0 auto;
+      max-width: none;
+      margin: 0;
+      flex: 0 0 auto;
+      overflow: visible;
+      padding: 0 2px 2px;
+    }
+
+    .lightbox-title {
+      display: block;
+      font-size: 0.88rem;
+      margin-bottom: 6px;
+      line-height: 1.3;
+    }
+
+    .lightbox-details {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 4px 10px;
+    }
+
+    .detail-row {
+      min-width: 0;
+    }
+
+    .detail-row dt,
+    .detail-label {
+      font-size: 0.55rem;
+      letter-spacing: 0.1em;
+      margin-bottom: 1px;
+    }
+
+    .detail-row dd {
+      font-size: 0.78rem;
+      line-height: 1.25;
+    }
+
+    .lightbox-source {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-top: 5px;
+      padding-top: 5px;
+    }
+
+    .lightbox-source .detail-label {
+      flex-shrink: 0;
+      margin: 0;
+      font-size: 0.55rem;
+      white-space: nowrap;
+    }
+
+    .lightbox-source-images {
+      flex: 0 1 auto;
+      min-width: 0;
+      flex-direction: row;
+      flex-wrap: nowrap;
+      gap: 3px;
+      margin-top: 0;
+      align-items: center;
+      justify-content: flex-start;
+    }
+
+    :global(.lightbox-source-images img) {
+      flex: 0 0 auto;
+      height: 88px;
+      width: auto;
+      max-width: 144px;
+      max-height: 88px;
+      object-fit: contain;
+      border-radius: 2px;
+      opacity: 0.9;
     }
 
     .lightbox-nav {
@@ -1864,38 +2050,183 @@ const thumbnailPreloads = artworksRaw
 
     .lightbox-mobile-nav {
       display: flex;
-      justify-content: center;
-      gap: 24px;
-      padding: 12px 20px 24px;
+      flex-shrink: 0;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding:
+        6px 12px
+        calc(6px + env(safe-area-inset-bottom, 0px));
+      border-top: 1px solid rgba(255, 255, 255, 0.08);
     }
 
     .lightbox-nav-mobile {
-      color: rgba(255, 255, 255, 0.6);
-      font-size: 0.85rem;
-      padding: 8px 16px;
-      transition: color 0.2s;
+      display: inline-flex;
+      align-items: center;
+      gap: 2px;
+      min-height: 44px;
+      padding: 8px 6px;
+      font-size: 0.9rem;
+      font-weight: 500;
+      letter-spacing: 0.01em;
+      color: rgba(255, 255, 255, 0.62);
+      -webkit-tap-highlight-color: transparent;
+      transition: color 0.2s ease;
     }
 
-    .lightbox-nav-mobile:hover {
+    .lightbox-prev-mobile {
+      justify-content: flex-start;
+      padding-left: 2px;
+    }
+
+    .lightbox-next-mobile {
+      justify-content: flex-end;
+      padding-right: 2px;
+    }
+
+    .lightbox-nav-mobile-chevron {
+      font-size: 1.65rem;
+      font-weight: 300;
+      line-height: 1;
+      transform: translateY(-1px);
+    }
+
+    .lightbox-nav-mobile-label {
+      line-height: 1;
+    }
+
+    .lightbox-nav-mobile:active {
       color: #fff;
     }
   }
 
   @media (max-width: 640px) {
+    .container {
+      padding: 0 12px;
+    }
+
+    .header-nav {
+      gap: 16px;
+    }
+
+    .header-nav a {
+      font-size: 0.78rem;
+    }
+
+    .header-name {
+      font-size: 0.95rem;
+    }
+
+    .theme-toggle {
+      width: 34px;
+      height: 34px;
+    }
+
+    .theme-toggle svg {
+      width: 18px;
+      height: 18px;
+    }
+
     .about {
-      padding: 48px 0 36px;
+      padding: 40px 0 28px;
+    }
+
+    .about-content p {
+      font-size: 0.92rem;
+    }
+
+    .about-contact {
+      font-size: 0.88rem;
+      margin-top: 0.9rem;
+      padding-top: 0.85rem;
     }
 
     .gallery {
-      padding: 48px 0 72px;
+      padding: 40px 0 60px;
+    }
+
+    .gallery-heading {
+      margin-bottom: 24px;
+      gap: 12px;
+    }
+
+    .section-label {
+      margin-bottom: 24px;
+      font-size: 0.92rem;
+    }
+
+    .gallery-section + .gallery-section {
+      margin-top: 36px;
+    }
+
+    .gallery-section-heading {
+      font-size: 0.88rem;
+      margin-bottom: 14px;
     }
 
     .gallery-wall {
-      padding-bottom: 20px;
+      --grid-unit: min(
+        var(--grid-unit-max, 10px),
+        calc(90vw / var(--grid-col-extent, 100))
+      );
+      padding: 4px 0 16px;
     }
 
-    .artwork-caption {
-      opacity: 1;
+    .footer {
+      padding: 28px 0;
+      font-size: 0.72rem;
+    }
+
+    .lightbox-body {
+      padding-top: calc(36px + env(safe-area-inset-top, 0px));
+    }
+
+    .lightbox-close {
+      font-size: 1.75rem;
+    }
+
+    .lightbox-title {
+      font-size: 0.82rem;
+      margin-bottom: 4px;
+    }
+
+    .lightbox-details {
+      gap: 3px 8px;
+    }
+
+    .detail-row dt,
+    .detail-label {
+      font-size: 0.52rem;
+    }
+
+    .detail-row dd {
+      font-size: 0.74rem;
+    }
+
+    .lightbox-source {
+      margin-top: 4px;
+      padding-top: 4px;
+      gap: 6px;
+    }
+
+    .lightbox-source-images {
+      gap: 3px;
+    }
+
+    :global(.lightbox-source-images img) {
+      height: 72px;
+      max-width: 116px;
+      max-height: 72px;
+    }
+
+    .lightbox-nav-mobile {
+      font-size: 0.84rem;
+      min-height: 40px;
+      padding: 6px 4px;
+    }
+
+    .lightbox-nav-mobile-chevron {
+      font-size: 1.5rem;
     }
   }
 </style>

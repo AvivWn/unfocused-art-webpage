@@ -359,4 +359,14 @@ const { title, description = 'Art portfolio' } = Astro.props;
     width: 48px;
     height: 48px;
   }
+
+  @media (max-width: 640px) {
+    html {
+      font-size: 92.5%;
+    }
+
+    :root {
+      --header-height: 52px;
+    }
+  }
 </style>
