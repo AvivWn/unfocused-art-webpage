@@ -3,49 +3,14 @@ import Layout from '../layouts/Layout.astro';
 import artworksRaw from '../data/artworks.json';
 import site from '../data/site.json';
 import { formatArtworkDate } from '../utils/formatArtworkDate';
-import { getEffectiveMaxSideCmFromPrintImage } from '../utils/getImagePixelDimensions';
-import { maxSideCm, parseDimensionsToCm } from '../utils/parseArtworkDimensions';
+import { buildGallerySections } from '../utils/buildGallerySections';
+import {
+  GALLERY_DISPLAY_PX_PER_GRID_UNIT,
+  GALLERY_GRID_RESOLUTION,
+  layoutGallerySection,
+} from '../utils/galleryGridLayout';
 
 type ArtworkEntry = (typeof artworksRaw)[number];
-
-/** Physical cm from JSON, or inferred cm from full image at 300 DPI print (matches canvas scale). */
-function effectiveMaxSideCm(artwork: ArtworkEntry): number | null {
-  const p = parseDimensionsToCm(artwork.dimensions);
-  if (p) return maxSideCm(p);
-  return getEffectiveMaxSideCmFromPrintImage(artwork.image);
-}
-
-const sideCmList = artworksRaw
-  .map(effectiveMaxSideCm)
-  .filter((n): n is number => n != null);
-
-const maxSideAcrossArtworks = sideCmList.length > 0 ? Math.max(...sideCmList) : 1;
-
-const MIN_GALLERY_DIM_SCALE = 0.3;
-
-function galleryDimensionScale(artwork: ArtworkEntry): number {
-  const side = effectiveMaxSideCm(artwork);
-  if (side == null) return 1;
-  const raw = side / maxSideAcrossArtworks;
-  return Math.max(MIN_GALLERY_DIM_SCALE, Math.min(1, raw));
-}
-
-function buildGallerySections(items: ArtworkEntry[]) {
-  const sections: { title: string; cards: { artwork: ArtworkEntry; index: number }[] }[] = [];
-  let index = 0;
-  for (const artwork of items) {
-    const title =
-      'sectionTitle' in artwork && typeof artwork.sectionTitle === 'string'
-        ? artwork.sectionTitle
-        : 'Works';
-    const last = sections[sections.length - 1];
-    if (!last || last.title !== title) {
-      sections.push({ title, cards: [] });
-    }
-    sections[sections.length - 1].cards.push({ artwork, index: index++ });
-  }
-  return sections;
-}
 
 function isCanvasPainting(materials: ArtworkEntry['materials']): boolean {
   return typeof materials === 'string' && /\bcanvas\b/i.test(materials);
@@ -59,7 +24,10 @@ function isCharcoalArtwork(materials: ArtworkEntry['materials']): boolean {
   return typeof materials === 'string' && materials.trim().toLowerCase() === 'charcoal';
 }
 
-const gallerySections = buildGallerySections(artworksRaw);
+const gallerySections = buildGallerySections(artworksRaw).map((section) => ({
+  ...section,
+  placed: layoutGallerySection(section.cards, GALLERY_GRID_RESOLUTION),
+}));
 
 /** Shared slug body for URL fragments (ASCII letters, digits, hyphens). */
 function slugRawFromTitle(title: string, emptyFallback: string): string {
@@ -118,9 +86,28 @@ const artworkFragmentIds = uniqueArtworkFragmentIds(
   artworksRaw.map((a) => a.title),
   takenArtworkFragmentIds,
 );
+
+const isDev = import.meta.env.DEV;
+
+const thumbnailPreloads = artworksRaw
+  .map((artwork) =>
+    typeof artwork.thumbnail === 'string'
+      ? artwork.thumbnail
+      : typeof artwork.image === 'string'
+        ? artwork.image
+        : null,
+  )
+  .filter((src): src is string => Boolean(src))
+  .slice(0, 8);
 ---
 
 <Layout title={`${site.siteTitle} — Paintings`} description={site.metaDescription}>
+  <Fragment slot="head">
+    {thumbnailPreloads.map((src) => (
+      <link rel="preload" as="image" href={src} fetchpriority="high" />
+    ))}
+  </Fragment>
+
   <!-- Header -->
   <header class="header" id="top">
     <div class="container header-inner">
@@ -194,7 +181,21 @@ const artworkFragmentIds = uniqueArtworkFragmentIds(
     <!-- Gallery -->
     <section class="gallery" id="works">
       <div class="container">
-        <h2 class="section-label">Works</h2>
+        <div class="gallery-heading">
+          <h2 class="section-label">Works</h2>
+          {isDev && (
+            <button
+              type="button"
+              class="gallery-layout-toggle"
+              id="gallery-layout-toggle"
+              aria-label="Reorganize gallery layout"
+              aria-pressed="false"
+              title="Reorganize paintings on the grid"
+            >
+              Reorganize
+            </button>
+          )}
+        </div>
 
         {artworksRaw.length === 0 && (
           <p class="gallery-empty">
@@ -206,10 +207,18 @@ const artworkFragmentIds = uniqueArtworkFragmentIds(
         {gallerySections.map((section, sectionIndex) => (
           <div class="gallery-section" id={gallerySectionFragmentIds[sectionIndex]}>
             <h3 class="gallery-section-heading">{section.title}</h3>
-            <div class="gallery-wall">
-              {section.cards.map(({ artwork, index }) => {
+            <div
+              class="gallery-wall"
+              style={{
+                '--grid-unit-max': `${GALLERY_DISPLAY_PX_PER_GRID_UNIT}px`,
+                '--grid-row-extent': String(section.placed[0]?.rowExtent ?? 0),
+                '--grid-col-extent': String(section.placed[0]?.colExtent ?? GALLERY_GRID_RESOLUTION),
+              }}
+            >
+              {section.placed.map(({ artwork, index, x, y, w, h }) => {
                 const thumb = artwork.thumbnail;
                 const dateLabel = formatArtworkDate(artwork);
+                const eagerThumb = index < 6;
                 return (
                 <button
                   type="button"
@@ -221,15 +230,22 @@ const artworkFragmentIds = uniqueArtworkFragmentIds(
                   ]}
                   id={artworkFragmentIds[index]}
                   data-index={index}
+                  data-artwork-title={artwork.title}
                   aria-label={`View ${artwork.title}`}
-                  style={{ '--dim-scale': String(galleryDimensionScale(artwork)) }}
+                  style={{
+                    '--ax': String(x),
+                    '--ay': String(y),
+                    '--aw': String(w),
+                    '--ah': String(h),
+                  }}
                 >
                   <div class="artwork-image-wrap">
                     <img
                       src={thumb ?? artwork.image}
                       alt={artwork.title}
-                      loading="lazy"
+                      loading={eagerThumb ? 'eager' : 'lazy'}
                       decoding="async"
+                      fetchpriority={eagerThumb ? 'high' : 'auto'}
                     />
                   </div>
                   <div class="artwork-caption">
@@ -245,6 +261,17 @@ const artworkFragmentIds = uniqueArtworkFragmentIds(
       </div>
     </section>
   </main>
+
+  {isDev && (
+    <div id="gallery-layout-editor" class="gallery-layout-editor" hidden>
+      <p class="gallery-layout-editor-label">Select a painting, then drag or use arrow keys</p>
+      <div class="gallery-layout-editor-actions">
+        <button type="button" id="gallery-layout-export">Copy JSON</button>
+        <button type="button" id="gallery-layout-reset">Reset</button>
+        <button type="button" id="gallery-layout-done">Done</button>
+      </div>
+    </div>
+  )}
 
   <!-- Lightbox -->
   <div id="lightbox" class="lightbox" aria-hidden="true" role="dialog" aria-label="Artwork viewer">
@@ -317,6 +344,7 @@ const artworkFragmentIds = uniqueArtworkFragmentIds(
 <script>
   import artworks from '../data/artworks.json';
   import { formatArtworkDate } from '../utils/formatArtworkDate';
+  import { GALLERY_PACK_GAP } from '../constants/gallery';
 
   const THEME_KEY = 'theme';
 
@@ -370,6 +398,9 @@ const artworkFragmentIds = uniqueArtworkFragmentIds(
   const lbZoomViewport = document.getElementById('lb-zoom-viewport');
 
   let current = 0;
+  let lbImageRequest = 0;
+
+  const fullImagePreloadState = new Map();
 
   const LB_PAN_CLICK_THRESHOLD = 8;
   /** Zoomed width ≈ this × fitted width, capped at native resolution (lower = less zoom). */
@@ -556,12 +587,138 @@ const artworkFragmentIds = uniqueArtworkFragmentIds(
     stripArtworkHashIfPresent();
   }
 
+  function getFullImageUrls() {
+    const seen = new Set();
+    const urls = [];
+    for (const artwork of artworks) {
+      if (typeof artwork.image !== 'string' || !artwork.image || seen.has(artwork.image)) {
+        continue;
+      }
+      seen.add(artwork.image);
+      urls.push(artwork.image);
+    }
+    return urls;
+  }
+
+  function preloadFullImage(src) {
+    const status = fullImagePreloadState.get(src);
+    if (status === 'done' || status === 'error') return Promise.resolve();
+    if (status === 'pending') {
+      return new Promise((resolve) => {
+        const wait = () => {
+          const next = fullImagePreloadState.get(src);
+          if (next === 'done' || next === 'error') resolve();
+          else setTimeout(wait, 40);
+        };
+        wait();
+      });
+    }
+
+    fullImagePreloadState.set(src, 'pending');
+    return new Promise((resolve) => {
+      const img = new Image();
+      const finish = () => {
+        fullImagePreloadState.set(
+          src,
+          img.complete && img.naturalWidth > 0 ? 'done' : 'error',
+        );
+        resolve();
+      };
+      img.onload = finish;
+      img.onerror = finish;
+      img.src = src;
+      if (img.complete) finish();
+    });
+  }
+
+  function scheduleIdleTask(task) {
+    if ('requestIdleCallback' in window) {
+      requestIdleCallback(() => task(), { timeout: 5000 });
+    } else {
+      setTimeout(task, 150);
+    }
+  }
+
+  function shouldSkipBackgroundPreload() {
+    try {
+      const conn = navigator.connection;
+      if (conn?.saveData) return true;
+      if (conn?.effectiveType === 'slow-2g' || conn?.effectiveType === '2g') return true;
+    } catch {
+      /* ignore */
+    }
+    return false;
+  }
+
+  async function preloadFullImagesInBackground() {
+    if (shouldSkipBackgroundPreload()) return;
+
+    for (const url of getFullImageUrls()) {
+      await new Promise((resolve) => {
+        scheduleIdleTask(() => {
+          preloadFullImage(url).then(resolve);
+        });
+      });
+    }
+  }
+
+  function startFullImagePreloadAfterReveal() {
+    const run = () => {
+      preloadFullImagesInBackground();
+    };
+
+    if (document.documentElement.classList.contains('is-ready')) {
+      run();
+      return;
+    }
+
+    const observer = new MutationObserver(() => {
+      if (!document.documentElement.classList.contains('is-ready')) return;
+      observer.disconnect();
+      run();
+    });
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['class'],
+    });
+  }
+
+  function setLightboxImage(src, alt) {
+    const requestId = ++lbImageRequest;
+    lbImg.classList.add('is-loading');
+
+    const reveal = () => {
+      if (requestId !== lbImageRequest) return;
+      lbImg.classList.remove('is-loading');
+    };
+
+    if (!src) {
+      lbImg.removeAttribute('src');
+      lbImg.alt = alt;
+      reveal();
+      return;
+    }
+
+    const applyImage = () => {
+      if (requestId !== lbImageRequest) return;
+      lbImg.src = src;
+      lbImg.alt = alt;
+      const decoded = lbImg.decode?.().catch(() => {}) ?? Promise.resolve();
+      decoded.then(reveal);
+    };
+
+    const loader = new Image();
+    loader.onload = applyImage;
+    loader.onerror = applyImage;
+    loader.src = src;
+    if (loader.complete) applyImage();
+  }
+
   function update() {
     resetLightboxZoom();
     lbImg.title = 'Click to zoom in at that spot. When zoomed: drag to pan; click without dragging to zoom out.';
     const a = artworks[current];
-    lbImg.src = a.image;
-    lbImg.alt = a.title;
+    setLightboxImage(a.image, a.title);
     lbTitle.textContent = a.title;
     const dateStr = formatArtworkDate(a);
     lbDate.textContent = dateStr;
@@ -643,8 +800,353 @@ const artworkFragmentIds = uniqueArtworkFragmentIds(
     }
   });
 
+  let layoutSuppressClick = false;
+
+  if (import.meta.env.DEV) {
+    const LAYOUT_SAVE_URL = '/api/gallery-layout.json';
+    const LAYOUT_DRAG_SNAP = 0.5;
+
+    const layoutEditor = document.getElementById('gallery-layout-editor');
+    const layoutToggle = document.getElementById('gallery-layout-toggle');
+    const layoutExportBtn = document.getElementById('gallery-layout-export');
+    const layoutResetBtn = document.getElementById('gallery-layout-reset');
+    const layoutDoneBtn = document.getElementById('gallery-layout-done');
+
+    let layoutEditMode = false;
+    let layoutSelectedCard = null;
+    let layoutDragCard = null;
+    let layoutDragWall = null;
+    let layoutDragStartX = 0;
+    let layoutDragStartY = 0;
+    let layoutDragOriginAx = 0;
+    let layoutDragOriginAy = 0;
+    let layoutDragMoved = false;
+
+    function parseCssUnit(value) {
+      const n = parseFloat(value);
+      return Number.isFinite(n) ? n : 0;
+    }
+
+    function cardGridPos(card) {
+      const inline = card.style;
+      const computed = getComputedStyle(card);
+      const read = (name) =>
+        parseCssUnit(inline.getPropertyValue(name)) ||
+        parseCssUnit(computed.getPropertyValue(name));
+      return {
+        ax: read('--ax'),
+        ay: read('--ay'),
+        aw: read('--aw'),
+        ah: read('--ah'),
+      };
+    }
+
+    function wallGridUnit(wall) {
+      return parseCssUnit(getComputedStyle(wall).getPropertyValue('--grid-unit')) || 10;
+    }
+
+    function snapLayout(n, step) {
+      return Math.round(n / step) * step;
+    }
+
+    function rectsOverlapWithGap(a, b, gap) {
+      return (
+        a.ax < b.ax + b.aw + gap &&
+        a.ax + a.aw + gap > b.ax &&
+        a.ay < b.ay + b.ah + gap &&
+        a.ay + a.ah + gap > b.ay
+      );
+    }
+
+    function canPlaceCardAt(card, ax, ay, wall) {
+      const { aw, ah } = cardGridPos(card);
+      const trial = { ax, ay, aw, ah };
+
+      for (const other of wall.querySelectorAll('.artwork-card')) {
+        if (other === card) continue;
+        if (rectsOverlapWithGap(trial, cardGridPos(other), GALLERY_PACK_GAP)) return false;
+      }
+
+      return true;
+    }
+
+    function resizeGalleryWall(wall) {
+      let maxRow = 0;
+      let maxCol = 0;
+      wall.querySelectorAll('.artwork-card').forEach((card) => {
+        const { ax, ay, aw, ah } = cardGridPos(card);
+        maxCol = Math.max(maxCol, ax + aw);
+        maxRow = Math.max(maxRow, ay + ah);
+      });
+      wall.style.setProperty('--grid-row-extent', String(maxRow));
+      wall.style.setProperty('--grid-col-extent', String(maxCol));
+    }
+
+    function setCardGridPos(card, ax, ay) {
+      card.style.setProperty('--ax', String(ax));
+      card.style.setProperty('--ay', String(ay));
+      const wall = card.closest('.gallery-wall');
+      if (wall) resizeGalleryWall(wall);
+    }
+
+    function collectLayoutPositions() {
+      const positions = [];
+      document.querySelectorAll('.artwork-card').forEach((card) => {
+        const title = card.dataset.artworkTitle;
+        if (!title) return;
+        const { ax, ay } = cardGridPos(card);
+        positions.push({ title, layout: { x: ax, y: ay } });
+      });
+      return positions;
+    }
+
+    function setLayoutSaveStatus(message, isError = false) {
+      const label = document.querySelector('.gallery-layout-editor-label');
+      if (!label) return;
+      label.textContent = message;
+      label.dataset.saveError = isError ? 'true' : 'false';
+    }
+
+    async function persistLayoutPositions(positions) {
+      if (positions.length === 0) {
+        throw new Error('No paintings found to save');
+      }
+
+      const response = await fetch(LAYOUT_SAVE_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ positions }),
+      });
+
+      if (!response.ok) {
+        let detail = '';
+        try {
+          const data = await response.json();
+          detail = data?.error ? `: ${data.error}` : '';
+        } catch {
+          /* ignore */
+        }
+        throw new Error(`Failed to save gallery layout${detail}`);
+      }
+    }
+
+    function teardownLayoutDrag() {
+      document.removeEventListener('mousemove', onLayoutDragMove);
+      document.removeEventListener('mouseup', onLayoutDragEnd);
+      document.removeEventListener('touchmove', onLayoutDragMove);
+      document.removeEventListener('touchend', onLayoutDragEnd);
+      document.body.style.userSelect = '';
+    }
+
+    function onLayoutDragMove(e) {
+      if (!layoutDragCard || !layoutDragWall) return;
+      const point = e.touches?.[0] ?? e;
+      const unit = wallGridUnit(layoutDragWall);
+      const step = e.shiftKey ? 1 : LAYOUT_DRAG_SNAP;
+      const dx = (point.clientX - layoutDragStartX) / unit;
+      const dy = (point.clientY - layoutDragStartY) / unit;
+
+      if (Math.abs(dx) + Math.abs(dy) > 0.05) layoutDragMoved = true;
+
+      const ax = Math.max(0, snapLayout(layoutDragOriginAx + dx, step));
+      const ay = Math.max(0, snapLayout(layoutDragOriginAy + dy, step));
+
+      if (canPlaceCardAt(layoutDragCard, ax, ay, layoutDragWall)) {
+        setCardGridPos(layoutDragCard, ax, ay);
+      }
+    }
+
+    function clearLayoutSelection() {
+      layoutSelectedCard?.classList.remove('is-layout-selected');
+      layoutSelectedCard = null;
+    }
+
+    function selectLayoutCard(card) {
+      if (!card) return;
+      if (layoutSelectedCard !== card) {
+        layoutSelectedCard?.classList.remove('is-layout-selected');
+        layoutSelectedCard = card;
+        card.classList.add('is-layout-selected');
+      }
+      card.focus({ preventScroll: true });
+    }
+
+    function onLayoutDragEnd() {
+      if (!layoutDragCard) return;
+      const card = layoutDragCard;
+      card.classList.remove('is-dragging');
+      if (layoutDragMoved) {
+        layoutSuppressClick = true;
+        selectLayoutCard(card);
+      } else {
+        selectLayoutCard(card);
+      }
+      layoutDragCard = null;
+      layoutDragWall = null;
+      teardownLayoutDrag();
+    }
+
+    function onLayoutDragStart(e) {
+      if (!layoutEditMode) return;
+      const card = e.target.closest('.artwork-card');
+      if (!card) return;
+
+      const point = e.touches?.[0] ?? e;
+      if (e.type === 'mousedown' && e.button !== 0) return;
+
+      e.preventDefault();
+      e.stopPropagation();
+
+      layoutDragCard = card;
+      layoutDragWall = card.closest('.gallery-wall');
+      layoutDragStartX = point.clientX;
+      layoutDragStartY = point.clientY;
+      const pos = cardGridPos(card);
+      layoutDragOriginAx = pos.ax;
+      layoutDragOriginAy = pos.ay;
+      layoutDragMoved = false;
+      card.classList.add('is-dragging');
+
+      document.body.style.userSelect = 'none';
+      document.addEventListener('mousemove', onLayoutDragMove);
+      document.addEventListener('mouseup', onLayoutDragEnd);
+      document.addEventListener('touchmove', onLayoutDragMove, { passive: false });
+      document.addEventListener('touchend', onLayoutDragEnd);
+    }
+
+    function moveLayoutCardByKeys(card, dx, dy, step) {
+      const wall = card.closest('.gallery-wall');
+      if (!wall) return false;
+
+      const { ax, ay } = cardGridPos(card);
+      const nextAx = Math.max(0, snapLayout(ax + dx, step));
+      const nextAy = Math.max(0, snapLayout(ay + dy, step));
+
+      if (!canPlaceCardAt(card, nextAx, nextAy, wall)) return false;
+      setCardGridPos(card, nextAx, nextAy);
+      return true;
+    }
+
+    function onLayoutCardSelect(e) {
+      if (!layoutEditMode) return;
+      if (layoutSuppressClick) {
+        layoutSuppressClick = false;
+        return;
+      }
+      e.preventDefault();
+      e.stopPropagation();
+      selectLayoutCard(e.currentTarget);
+    }
+
+    function onLayoutKeyDown(e) {
+      if (!layoutEditMode || !layoutSelectedCard) return;
+
+      const step = e.shiftKey ? 1 : LAYOUT_DRAG_SNAP;
+      let dx = 0;
+      let dy = 0;
+
+      if (e.key === 'ArrowLeft') dx = -step;
+      else if (e.key === 'ArrowRight') dx = step;
+      else if (e.key === 'ArrowUp') dy = -step;
+      else if (e.key === 'ArrowDown') dy = step;
+      else return;
+
+      e.preventDefault();
+      e.stopPropagation();
+      moveLayoutCardByKeys(layoutSelectedCard, dx, dy, step);
+    }
+
+    function setLayoutEditMode(on) {
+      layoutEditMode = on;
+      document.body.classList.toggle('gallery-layout-edit-mode', on);
+      if (layoutEditor) layoutEditor.hidden = !on;
+      if (layoutToggle) layoutToggle.setAttribute('aria-pressed', String(on));
+      if (!on) {
+        clearLayoutSelection();
+        document.activeElement?.closest?.('.artwork-card')?.blur();
+      }
+    }
+
+    function exportLayoutJson() {
+      const entries = [];
+      document.querySelectorAll('.artwork-card').forEach((card) => {
+        const { ax, ay } = cardGridPos(card);
+        entries.push({
+          title: card.dataset.artworkTitle,
+          layout: { x: ax, y: ay },
+        });
+      });
+      const text = JSON.stringify(entries, null, 2);
+      navigator.clipboard?.writeText(text).catch(() => {});
+      if (layoutExportBtn) layoutExportBtn.textContent = 'Copied!';
+      window.setTimeout(() => {
+        if (layoutExportBtn) layoutExportBtn.textContent = 'Copy JSON';
+      }, 1600);
+    }
+
+    async function resetLayoutPositions() {
+      setLayoutSaveStatus('Running auto layout…');
+      const response = await fetch(LAYOUT_SAVE_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reset: true }),
+      });
+      if (!response.ok) {
+        setLayoutSaveStatus('Reset failed — restart npm run dev', true);
+        return;
+      }
+      location.reload();
+    }
+
+    layoutToggle?.addEventListener('click', () => {
+      setLayoutEditMode(!layoutEditMode);
+    });
+    layoutDoneBtn?.addEventListener('click', () => {
+      if (layoutDoneBtn) layoutDoneBtn.disabled = true;
+      const positions = collectLayoutPositions();
+      setLayoutSaveStatus('Saving…');
+      persistLayoutPositions(positions)
+        .then(() => {
+          setLayoutEditMode(false);
+          setLayoutSaveStatus('Saved');
+          window.setTimeout(() => {
+            setLayoutSaveStatus('Select a painting, then drag or use arrow keys');
+          }, 1500);
+        })
+        .catch((error) => {
+          setLayoutSaveStatus(
+            error instanceof Error ? error.message : 'Save failed — restart npm run dev',
+            true,
+          );
+        })
+        .finally(() => {
+          if (layoutDoneBtn) layoutDoneBtn.disabled = false;
+        });
+    });
+    layoutResetBtn?.addEventListener('click', () => {
+      resetLayoutPositions().catch(() => {});
+    });
+    layoutExportBtn?.addEventListener('click', exportLayoutJson);
+
+    document.addEventListener('keydown', onLayoutKeyDown);
+
+    document.querySelectorAll('.artwork-card').forEach((card) => {
+      card.addEventListener('mousedown', onLayoutDragStart);
+      card.addEventListener('touchstart', onLayoutDragStart, { passive: false });
+      card.addEventListener('click', onLayoutCardSelect, true);
+    });
+  }
+
   document.querySelectorAll('.artwork-card').forEach((card) => {
     card.addEventListener('click', () => {
+      if (import.meta.env.DEV) {
+        if (layoutSuppressClick) {
+          layoutSuppressClick = false;
+          return;
+        }
+        if (document.body.classList.contains('gallery-layout-edit-mode')) return;
+      }
+
       const idx = parseInt(card.dataset.index, 10);
       if (card.id && history.replaceState) {
         history.replaceState(null, '', `#${card.id}`);
@@ -681,6 +1183,7 @@ const artworkFragmentIds = uniqueArtworkFragmentIds(
 
   window.addEventListener('hashchange', applyLocationHash);
   applyLocationHash();
+  startFullImagePreloadAfterReveal();
 </script>
 
 <style>
@@ -714,6 +1217,39 @@ const artworkFragmentIds = uniqueArtworkFragmentIds(
     display: flex;
     align-items: center;
     gap: 4px;
+  }
+
+  .gallery-layout-toggle {
+    font: inherit;
+    font-size: 0.8rem;
+    font-weight: 500;
+    letter-spacing: 0.02em;
+    padding: 6px 10px;
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+    background: transparent;
+    color: var(--color-text-secondary);
+    cursor: pointer;
+    transition:
+      color 0.2s,
+      border-color 0.2s,
+      background 0.2s;
+  }
+
+  .gallery-layout-toggle:hover {
+    color: var(--color-text);
+    border-color: var(--color-text-muted);
+  }
+
+  .gallery-layout-toggle:focus-visible {
+    outline: 2px solid var(--color-text-muted);
+    outline-offset: 2px;
+  }
+
+  .gallery-layout-toggle[aria-pressed='true'] {
+    color: var(--color-text);
+    border-color: var(--color-text-muted);
+    background: var(--color-surface);
   }
 
   .theme-toggle {
@@ -854,6 +1390,18 @@ const artworkFragmentIds = uniqueArtworkFragmentIds(
     border-top: 1px solid var(--color-border);
   }
 
+  .gallery-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 36px;
+  }
+
+  .gallery-heading .section-label {
+    margin-bottom: 0;
+  }
+
   .gallery-empty {
     color: var(--color-text-muted);
     font-size: 0.95rem;
@@ -874,37 +1422,36 @@ const artworkFragmentIds = uniqueArtworkFragmentIds(
   }
 
   /*
-   * Row-major flex: each line’s height follows the tallest tile. align-items: flex-end
-   * bottom-aligns cards so the visible step from any card bottom to the next row’s top
-   * equals --wall-contact-gap (row-gap), not extra slack under shorter neighbors.
+   * 100×100 cm virtual wall (1 unit = 1 cm). Each unit renders at --grid-unit-max px
+   * on large screens; shrinks on narrow viewports so the wall still fits.
    */
   .gallery-wall {
-    /* Multiply tile base size and gaps; --dim-scale ratios between works stay the same. */
-    --wall-layout-scale: 1.5;
-    --wall-contact-gap: calc(24px * var(--wall-layout-scale));
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: center;
-    align-items: flex-end;
-    align-content: flex-start;
-    row-gap: var(--wall-contact-gap);
-    column-gap: var(--wall-contact-gap);
-    width: fit-content;
+    --grid-unit: min(
+      var(--grid-unit-max, 10px),
+      calc(94vw / var(--grid-col-extent, 100))
+    );
+    --wall-width: calc(var(--grid-col-extent, 100) * var(--grid-unit));
+    position: relative;
+    width: var(--wall-width);
+    height: max(0px, calc(var(--grid-row-extent) * var(--grid-unit)));
     max-width: 100%;
     margin-inline: auto;
     padding: 6px 0 26px;
-    --wall-art-base-width: calc(var(--wall-layout-scale) * min(360px, 46vw));
   }
 
   .artwork-card {
-    position: relative;
+    position: absolute;
     z-index: 0;
     overflow: visible;
-    flex: 0 0 auto;
-    width: calc(var(--dim-scale, 1) * var(--wall-art-base-width));
-    max-width: min(94vw, calc(var(--dim-scale, 1) * var(--wall-art-base-width) * 1.08));
-    background: var(--color-surface);
+    left: calc(var(--ax) * var(--grid-unit));
+    top: calc(var(--ay) * var(--grid-unit));
+    width: calc(var(--aw) * var(--grid-unit));
+    height: calc(var(--ah) * var(--grid-unit));
+    background: transparent;
     text-align: left;
+    border: none;
+    padding: 0;
+    cursor: pointer;
     border-radius: 5px;
     box-shadow: var(--shadow-artwork);
     transition:
@@ -916,6 +1463,90 @@ const artworkFragmentIds = uniqueArtworkFragmentIds(
     transform: scale(1.02);
     z-index: 2;
     box-shadow: var(--shadow-artwork-hover);
+  }
+
+  :global(body.gallery-layout-edit-mode) .artwork-card {
+    cursor: grab;
+    touch-action: none;
+  }
+
+  :global(body.gallery-layout-edit-mode) .artwork-card.is-dragging {
+    cursor: grabbing;
+    z-index: 5;
+    outline: 2px dashed var(--color-text-muted);
+    outline-offset: 3px;
+    transform: none;
+  }
+
+  :global(body.gallery-layout-edit-mode) .artwork-card.is-layout-selected {
+    z-index: 4;
+    outline: 2px dashed var(--color-text);
+    outline-offset: 3px;
+    transform: none;
+    box-shadow: var(--shadow-artwork-hover);
+  }
+
+  :global(body.gallery-layout-edit-mode) .artwork-card:hover {
+    transform: none;
+  }
+
+  .gallery-layout-editor {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 120;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 10px 14px;
+    padding: 12px 16px;
+    border-radius: 10px;
+    border: 1px solid var(--color-border);
+    background: var(--color-header-bg);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.12);
+    max-width: min(94vw, 520px);
+  }
+
+  .gallery-layout-editor[hidden] {
+    display: none;
+  }
+
+  .gallery-layout-editor-label {
+    font-size: 0.85rem;
+    color: var(--color-text-secondary);
+    margin: 0;
+    flex: 1 1 100%;
+    text-align: center;
+  }
+
+  .gallery-layout-editor-label[data-save-error='true'] {
+    color: #b42318;
+  }
+
+  .gallery-layout-editor-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: center;
+  }
+
+  .gallery-layout-editor-actions button {
+    font: inherit;
+    font-size: 0.85rem;
+    padding: 7px 14px;
+    border-radius: 7px;
+    border: 1px solid var(--color-border);
+    background: var(--color-bg);
+    color: var(--color-text);
+    cursor: pointer;
+  }
+
+  .gallery-layout-editor-actions button:hover {
+    border-color: var(--color-text-muted);
   }
 
   /* Light from upper-right: tight falloff, stays close to the canvas edge */
@@ -940,14 +1571,17 @@ const artworkFragmentIds = uniqueArtworkFragmentIds(
 
   .artwork-image-wrap {
     width: 100%;
-    overflow: hidden;
-    border-radius: 4px;
+    height: 100%;
+    overflow: visible;
+    border-radius: inherit;
   }
 
   .artwork-image-wrap img {
     display: block;
     width: 100%;
-    height: auto;
+    height: 100%;
+    object-fit: contain;
+    border-radius: inherit;
   }
 
   .artwork-caption {
@@ -1098,6 +1732,11 @@ const artworkFragmentIds = uniqueArtworkFragmentIds(
     margin: auto;
     border-radius: 2px;
     outline: none;
+    transition: opacity 0.15s ease;
+  }
+
+  .lightbox-zoom-viewport img.is-loading {
+    opacity: 0;
   }
 
   .lightbox-zoom-viewport.is-zoomed img {
@@ -1252,9 +1891,7 @@ const artworkFragmentIds = uniqueArtworkFragmentIds(
     }
 
     .gallery-wall {
-      --wall-contact-gap: calc(18px * var(--wall-layout-scale));
       padding-bottom: 20px;
-      --wall-art-base-width: calc(var(--wall-layout-scale) * min(300px, 86vw));
     }
 
     .artwork-caption {

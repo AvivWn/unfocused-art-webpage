@@ -1,4 +1,6 @@
 ---
+import site from '../data/site.json';
+
 interface Props {
   title: string;
   description?: string;
@@ -15,6 +17,105 @@ const { title, description = 'Art portfolio' } = Astro.props;
     <meta name="description" content={description} />
     <meta name="color-scheme" content="light dark" />
     <title>{title}</title>
+    <style is:inline>
+      html:not(.is-ready) {
+        background: #ffffff;
+      }
+
+      html:not(.is-ready)[data-theme='dark'] {
+        background: #1f1d1b;
+      }
+
+      #page-loader {
+        position: fixed;
+        inset: 0;
+        z-index: 9999;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        transition: opacity 0.35s ease, visibility 0.35s ease;
+      }
+
+      html:not(.is-ready) #page-loader {
+        opacity: 1;
+        visibility: visible;
+      }
+
+      html.is-ready #page-loader {
+        opacity: 0;
+        visibility: hidden;
+        pointer-events: none;
+      }
+
+      html:not(.is-ready) .page-content {
+        opacity: 0;
+        pointer-events: none;
+      }
+
+      html.is-ready .page-content {
+        opacity: 1;
+        transition: opacity 0.35s ease;
+      }
+
+      .page-loader__spinner {
+        position: relative;
+        width: 48px;
+        height: 48px;
+      }
+
+      .page-loader__spinner-svg {
+        display: block;
+        width: 100%;
+        height: 100%;
+      }
+
+      .page-loader__spinner-rotor {
+        position: absolute;
+        inset: 0;
+        -webkit-animation: page-loader-spin 0.85s linear infinite;
+        animation: page-loader-spin 0.85s linear infinite;
+      }
+
+      .page-loader__spinner-track,
+      .page-loader__spinner-arc {
+        fill: none;
+        stroke-width: 3;
+      }
+
+      .page-loader__spinner-track {
+        stroke: #e4e4e4;
+      }
+
+      html[data-theme='dark'] .page-loader__spinner-track {
+        stroke: #45403a;
+      }
+
+      .page-loader__spinner-arc {
+        stroke: #1a1a1a;
+        stroke-linecap: round;
+        stroke-dasharray: 36, 77;
+      }
+
+      html[data-theme='dark'] .page-loader__spinner-arc {
+        stroke: #f0ece8;
+      }
+
+      @-webkit-keyframes page-loader-spin {
+        to {
+          -webkit-transform: rotate(360deg);
+          transform: rotate(360deg);
+        }
+      }
+
+      @keyframes page-loader-spin {
+        to {
+          -webkit-transform: rotate(360deg);
+          transform: rotate(360deg);
+        }
+      }
+    </style>
     <script is:inline>
       (function () {
         try {
@@ -29,9 +130,96 @@ const { title, description = 'Art portfolio' } = Astro.props;
         }
       })();
     </script>
+    <slot name="head" />
   </head>
-  <body>
-    <slot />
+  <body aria-busy="true">
+    <div id="page-loader" class="page-loader" role="status" aria-live="polite" aria-label="Loading">
+      <div class="page-loader__inner">
+        <p class="page-loader__title">{site.siteTitle}</p>
+        <p class="page-loader__artist">{site.artistName}</p>
+        <div class="page-loader__spinner" aria-hidden="true">
+          <svg class="page-loader__spinner-svg" viewBox="0 0 48 48" width="48" height="48">
+            <circle class="page-loader__spinner-track" cx="24" cy="24" r="18"></circle>
+          </svg>
+          <div class="page-loader__spinner-rotor">
+            <svg class="page-loader__spinner-svg" viewBox="0 0 48 48" width="48" height="48">
+              <circle class="page-loader__spinner-arc" cx="24" cy="24" r="18"></circle>
+            </svg>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="page-content">
+      <slot />
+    </div>
+    <script is:inline>
+      (function () {
+        var IMAGE_TIMEOUT_MS = 15000;
+
+        function decodeImg(img) {
+          if (img.decode) {
+            return img.decode().catch(function () {});
+          }
+          return Promise.resolve();
+        }
+
+        function waitForImg(img) {
+          if (img.complete && img.naturalWidth > 0) {
+            return decodeImg(img);
+          }
+
+          img.loading = 'eager';
+
+          return new Promise(function (resolve) {
+            var settled = false;
+
+            function done() {
+              if (settled) return;
+              settled = true;
+              decodeImg(img).then(resolve);
+            }
+
+            img.addEventListener('load', done, { once: true });
+            img.addEventListener('error', done, { once: true });
+            setTimeout(done, IMAGE_TIMEOUT_MS);
+          });
+        }
+
+        function reveal() {
+          document.documentElement.classList.add('is-ready');
+          document.body.removeAttribute('aria-busy');
+
+          var loader = document.getElementById('page-loader');
+          if (!loader) return;
+
+          loader.addEventListener('transitionend', function onEnd(e) {
+            if (e.propertyName !== 'opacity') return;
+            loader.setAttribute('hidden', '');
+            loader.removeEventListener('transitionend', onEnd);
+          });
+        }
+
+        function whenImagesReady() {
+          var imgs = document.querySelectorAll('.gallery img');
+          if (!imgs.length) {
+            imgs = document.querySelectorAll('img');
+          }
+
+          if (!imgs.length) {
+            reveal();
+            return;
+          }
+
+          Promise.all(Array.prototype.map.call(imgs, waitForImg)).then(reveal);
+        }
+
+        if (document.readyState === 'loading') {
+          document.addEventListener('DOMContentLoaded', whenImagesReady);
+        } else {
+          whenImagesReady();
+        }
+      })();
+    </script>
   </body>
 </html>
 
@@ -134,5 +322,41 @@ const { title, description = 'Art portfolio' } = Astro.props;
   a {
     color: inherit;
     text-decoration: none;
+  }
+
+  .page-loader {
+    background: var(--color-bg);
+    color: var(--color-text);
+  }
+
+  .page-loader[hidden] {
+    display: none;
+  }
+
+  .page-loader__inner {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    padding: 24px;
+  }
+
+  .page-loader__title {
+    font-size: 1.35rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+  }
+
+  .page-loader__artist {
+    font-size: 0.95rem;
+    color: var(--color-text-secondary);
+    letter-spacing: 0.03em;
+    margin-bottom: 8px;
+  }
+
+  .page-loader__spinner {
+    position: relative;
+    width: 48px;
+    height: 48px;
   }
 </style>

@@ -4,6 +4,9 @@ node_modules/
 # Build output
 dist/
 
+# Artwork metadata (local layout/entries; copy or create after clone)
+src/data/artworks.json
+
 # Static assets (artwork files, favicons, etc.) — not tracked; copy or sync locally after clone
 public/
 
