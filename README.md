@@ -1,6 +1,6 @@
 # Art portfolio
 
-A minimal single-page site for paintings: about section, responsive gallery, and a full-screen viewer with details (title, year, dimensions, materials, optional source image).
+A minimal single-page site for paintings: about section, responsive gallery, and a full-screen viewer with details (title, optional description, year, dimensions, materials, optional source image).
 
 Built with [Astro](https://astro.build). `npm run build` outputs plain static files in `dist/` — deploy anywhere (Vercel, Netlify, Cloudflare Pages, GitHub Pages) with no server.
 
@@ -54,6 +54,7 @@ Each entry has these fields:
 | `month`      | number (optional)| Month completed, **1–12**. Omit when unknown; gallery and viewer then show **year only** |
 | `dimensions` | string (optional)| Physical size, e.g. `"60 × 80 cm"` (supports **`cm`**, **`mm`**, **`in`**). Used in the viewer when set. On the main page, every piece gets an effective **longest side in cm**: from `dimensions` when set, otherwise from the **`image`** file’s pixel size assuming **300 DPI** print (300 px = 1 in → cm via × 2.54). All works share **one** scale vs the **largest** effective cm side. Thumbnails fill the tile width; height follows the image. |
 | `materials`  | string           | Medium used, e.g. `"Oil on canvas"`                  |
+| `description`| string (optional)| Short text about the work; shown in the viewer below the title when non-empty |
 | `image`      | string           | Full image in the lightbox (path under `public/`). Use **`.jpg`**, **`.jpeg`**, **`.png`**, or **`.webp`** (extension in the path must match the file). |
 | `thumbnail`  | string (optional)| Thumbnail on the main page; if omitted, `image` is used (same formats). If set and different from `image`, the wall shows the **thumbnail** at its **natural aspect ratio** (full width, height from the file)—it is **not** cropped to match the full image. |
 | `source`     | string \| null   | Optional single reference image (same formats as `image`). Ignored if `sources` is set. |

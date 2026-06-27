@@ -165,13 +165,13 @@ const thumbnailPreloads = artworksRaw
     <!-- About -->
     <section class="about" id="about">
       <div class="container">
-        <h2 class="section-label">About</h2>
         <div class="about-content">
           {site.aboutParagraphs.map((paragraph) => (
             <p>{paragraph}</p>
           ))}
           <p class="about-contact">
             <span class="about-contact-name">{site.artistName}</span>
+            <span class="about-contact-sep" aria-hidden="true">·</span>
             <a class="about-contact-email" href={`mailto:${site.email}`}>{site.email}</a>
           </p>
         </div>
@@ -181,22 +181,6 @@ const thumbnailPreloads = artworksRaw
     <!-- Gallery -->
     <section class="gallery" id="works">
       <div class="container">
-        <div class="gallery-heading">
-          <h2 class="section-label">Works</h2>
-          {isDev && (
-            <button
-              type="button"
-              class="gallery-layout-toggle"
-              id="gallery-layout-toggle"
-              aria-label="Reorganize gallery layout"
-              aria-pressed="false"
-              title="Reorganize paintings on the grid"
-            >
-              Reorganize
-            </button>
-          )}
-        </div>
-
         {artworksRaw.length === 0 && (
           <p class="gallery-empty">
             No artworks yet. Add entries to <code>src/data/artworks.json</code> and put each piece in its own
@@ -204,6 +188,9 @@ const thumbnailPreloads = artworksRaw
           </p>
         )}
 
+        {gallerySections.length > 0 && (
+          <div class="gallery-layout">
+            <div class="gallery-sections">
         {gallerySections.map((section, sectionIndex) => (
           <div class="gallery-section" id={gallerySectionFragmentIds[sectionIndex]}>
             <h3 class="gallery-section-heading">
@@ -254,15 +241,17 @@ const thumbnailPreloads = artworksRaw
                     />
                   </div>
                   <div class="artwork-caption">
-                    <span class="artwork-card-title">{artwork.title}</span>
-                    {dateParts && (
-                      <span class="artwork-card-year">
-                        {dateParts.month && (
-                          <span class="artwork-card-year-month">{dateParts.month}</span>
-                        )}
-                        <span class="artwork-card-year-value">{dateParts.year}</span>
-                      </span>
-                    )}
+                    <div class="artwork-caption-main">
+                      <span class="artwork-card-title">{artwork.title}</span>
+                      {dateParts && (
+                        <span class="artwork-card-year">
+                          {dateParts.month && (
+                            <span class="artwork-card-year-month">{dateParts.month}</span>
+                          )}
+                          <span class="artwork-card-year-value">{dateParts.year}</span>
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </button>
                 );
@@ -270,6 +259,20 @@ const thumbnailPreloads = artworksRaw
             </div>
           </div>
         ))}
+            </div>
+
+            <nav class="works-index" aria-label="Gallery series">
+              {gallerySections.map((section, sectionIndex) => (
+                <a
+                  class="works-index-bar"
+                  href={`#${gallerySectionFragmentIds[sectionIndex]}`}
+                  aria-label={section.title}
+                  title={section.title}
+                ></a>
+              ))}
+            </nav>
+          </div>
+        )}
       </div>
     </section>
   </main>
@@ -307,6 +310,9 @@ const thumbnailPreloads = artworksRaw
 
         <div class="lightbox-info">
           <h3 id="lb-title" class="lightbox-title"></h3>
+          <p id="lb-description-wrap" class="lightbox-description-wrap">
+            <span id="lb-description" class="lightbox-description"></span>
+          </p>
 
           <dl class="lightbox-details">
             <div id="lb-date-wrap" class="detail-row">
@@ -349,6 +355,20 @@ const thumbnailPreloads = artworksRaw
   <!-- Footer -->
   <footer class="footer">
     <div class="container">
+      {isDev && (
+        <div class="footer-layout-toggle">
+          <button
+            type="button"
+            class="gallery-layout-toggle"
+            id="gallery-layout-toggle"
+            aria-label="Reorganize gallery layout"
+            aria-pressed="false"
+            title="Reorganize paintings on the grid"
+          >
+            Reorganize
+          </button>
+        </div>
+      )}
       <p class="footer-line">&copy; {new Date().getFullYear()} {site.siteTitle}</p>
       <p class="footer-line">
         {site.artistName}
@@ -405,6 +425,8 @@ const thumbnailPreloads = artworksRaw
   const lightbox = document.getElementById('lightbox');
   const lbImg = document.getElementById('lightbox-img');
   const lbTitle = document.getElementById('lb-title');
+  const lbDescriptionWrap = document.getElementById('lb-description-wrap');
+  const lbDescription = document.getElementById('lb-description');
   const lbDate = document.getElementById('lb-date');
   const lbDateWrap = document.getElementById('lb-date-wrap');
   const lbDimensionsWrap = document.getElementById('lb-dimensions-wrap');
@@ -738,6 +760,15 @@ const thumbnailPreloads = artworksRaw
     const a = artworks[current];
     setLightboxImage(a.image, a.title);
     lbTitle.textContent = a.title;
+    const description =
+      a.description != null ? String(a.description).trim() : '';
+    if (description !== '') {
+      lbDescriptionWrap.style.display = '';
+      lbDescription.textContent = description;
+    } else {
+      lbDescriptionWrap.style.display = 'none';
+      lbDescription.textContent = '';
+    }
     const dateStr = formatArtworkDate(a);
     lbDate.textContent = dateStr;
     lbDateWrap.style.display = dateStr.trim() !== '' ? '' : 'none';
@@ -1193,17 +1224,141 @@ const thumbnailPreloads = artworksRaw
     if (e.key === 'ArrowRight') go(1);
   });
 
-  let touchX = 0;
+  let touchStartX = 0;
+  let touchSwipeAllowed = true;
+
   lightbox.addEventListener('touchstart', (e) => {
-    touchX = e.changedTouches[0].screenX;
+    if (e.touches.length !== 1) {
+      touchSwipeAllowed = false;
+      return;
+    }
+    touchStartX = e.touches[0].screenX;
+    touchSwipeAllowed = !lbZoomViewport.classList.contains('is-zoomed');
   }, { passive: true });
+
+  lightbox.addEventListener('touchmove', () => {
+    if (lbZoomViewport.classList.contains('is-zoomed')) {
+      touchSwipeAllowed = false;
+    }
+  }, { passive: true });
+
   lightbox.addEventListener('touchend', (e) => {
-    const diff = e.changedTouches[0].screenX - touchX;
+    if (!touchSwipeAllowed || lbZoomViewport.classList.contains('is-zoomed')) {
+      touchSwipeAllowed = true;
+      return;
+    }
+    const diff = e.changedTouches[0].screenX - touchStartX;
     if (Math.abs(diff) > 50) go(diff > 0 ? -1 : 1);
   });
 
   window.addEventListener('hashchange', applyLocationHash);
   applyLocationHash();
+
+  function initWorksIndex() {
+    const index = document.querySelector('.works-index');
+    if (!index) return;
+
+    const bars = [...index.querySelectorAll('.works-index-bar')];
+    const sections = bars
+      .map((bar) => {
+        const id = bar.getAttribute('href')?.slice(1);
+        return id ? document.getElementById(id) : null;
+      })
+      .filter((el) => el instanceof HTMLElement);
+
+    if (!sections.length) return;
+
+    const setActive = (id) => {
+      bars.forEach((bar) => {
+        const active = bar.getAttribute('href') === `#${id}`;
+        bar.classList.toggle('is-active', active);
+        if (active) bar.setAttribute('aria-current', 'location');
+        else bar.removeAttribute('aria-current');
+      });
+    };
+
+    const updateActiveFromScroll = () => {
+      const bandTop = window.innerHeight * 0.2;
+      const bandBottom = window.innerHeight * 0.8;
+      const centerY = window.innerHeight * 0.5;
+      const first = sections[0];
+      const last = sections[sections.length - 1];
+
+      // Below the gallery — keep the last section highlighted.
+      if (last.getBoundingClientRect().bottom < bandTop) {
+        setActive(last.id);
+        return;
+      }
+
+      // Approaching the works — highlight the first section.
+      if (first.getBoundingClientRect().top > bandBottom) {
+        setActive(first.id);
+        return;
+      }
+
+      // Active = section with the most overlap in the middle 60% of the viewport.
+      let best = first;
+      let bestOverlap = 0;
+      for (const section of sections) {
+        const { top, bottom } = section.getBoundingClientRect();
+        const overlapTop = Math.max(top, bandTop);
+        const overlapBottom = Math.min(bottom, bandBottom);
+        const overlap = Math.max(0, overlapBottom - overlapTop);
+        if (overlap > bestOverlap) {
+          bestOverlap = overlap;
+          best = section;
+        }
+      }
+
+      if (bestOverlap > 0) {
+        setActive(best.id);
+        return;
+      }
+
+      // Between sections (gap in the band): nearest section center to window middle.
+      let closest = first;
+      let minDistance = Infinity;
+      for (const section of sections) {
+        const rect = section.getBoundingClientRect();
+        const sectionCenter = (rect.top + rect.bottom) / 2;
+        const distance = Math.abs(sectionCenter - centerY);
+        if (distance < minDistance) {
+          minDistance = distance;
+          closest = section;
+        }
+      }
+      setActive(closest.id);
+    };
+
+    let scrollScheduled = false;
+    const scheduleScrollUpdate = () => {
+      if (scrollScheduled) return;
+      scrollScheduled = true;
+      requestAnimationFrame(() => {
+        scrollScheduled = false;
+        updateActiveFromScroll();
+      });
+    };
+
+    window.addEventListener('scroll', scheduleScrollUpdate, { passive: true });
+    window.addEventListener('resize', scheduleScrollUpdate, { passive: true });
+
+    const syncFromHash = () => {
+      const hashId = decodeURIComponent(location.hash.replace(/^#/, ''));
+      if (hashId && sections.some((section) => section.id === hashId)) {
+        setActive(hashId);
+        window.setTimeout(updateActiveFromScroll, 450);
+        return;
+      }
+      updateActiveFromScroll();
+    };
+
+    syncFromHash();
+    window.addEventListener('hashchange', syncFromHash);
+    window.addEventListener('scrollend', updateActiveFromScroll, { passive: true });
+  }
+
+  initWorksIndex();
   startFullImagePreloadAfterReveal();
 </script>
 
@@ -1237,7 +1392,7 @@ const thumbnailPreloads = artworksRaw
   .header-actions {
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: 32px;
   }
 
   .gallery-layout-toggle {
@@ -1315,9 +1470,10 @@ const thumbnailPreloads = artworksRaw
   }
 
   .header-name {
-    font-size: 1.35rem;
+    font-family: var(--font-display);
+    font-size: 1.45rem;
     font-weight: 600;
-    letter-spacing: 0.02em;
+    letter-spacing: 0.01em;
   }
 
   .header-nav {
@@ -1344,30 +1500,29 @@ const thumbnailPreloads = artworksRaw
     scroll-margin-top: calc(var(--header-height) + 16px);
   }
 
-  /* ---- Sections ---- */
-  .section-label {
-    font-size: clamp(1rem, 0.9rem + 0.55vw, 1.25rem);
-    font-weight: 600;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-    color: var(--color-text-muted);
-    margin-bottom: 36px;
-  }
-
   /* ---- About ---- */
   .about {
-    padding: 64px 0 48px;
+    padding: 24px 0 28px;
   }
 
   .about-content {
     max-width: 520px;
+    margin-inline: auto;
+    text-align: center;
   }
 
   .about-content p {
     margin-bottom: 0.5rem;
     color: var(--color-text-secondary);
-    font-size: 1rem;
-    line-height: 1.5;
+    line-height: 1.55;
+  }
+
+  .about-content > p:not(.about-contact) {
+    font-family: var(--font-display);
+    font-size: 1.2rem;
+    font-weight: 250;
+    line-height: 1.35;
+    margin-bottom: 0.45rem;
   }
 
   .about-content p:last-child {
@@ -1375,20 +1530,29 @@ const thumbnailPreloads = artworksRaw
   }
 
   .about-contact {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: baseline;
+    gap: 0.5rem;
     margin-top: 1.1rem;
     margin-bottom: 0;
     padding-top: 1rem;
     border-top: 1px solid var(--color-border);
+    font-family: var(--font-body);
     font-size: 0.95rem;
+    font-weight: 400;
     color: var(--color-text-secondary);
     line-height: 1.5;
   }
 
   .about-contact-name {
-    display: block;
-    margin-bottom: 0.25rem;
     color: var(--color-text);
     font-weight: 500;
+  }
+
+  .about-contact-sep {
+    color: var(--color-text-muted);
   }
 
   .about-contact-email {
@@ -1403,20 +1567,8 @@ const thumbnailPreloads = artworksRaw
 
   /* ---- Gallery ---- */
   .gallery {
-    padding: 64px 0 100px;
+    padding: 28px 0 100px;
     border-top: 1px solid var(--color-border);
-  }
-
-  .gallery-heading {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 16px;
-    margin-bottom: 36px;
-  }
-
-  .gallery-heading .section-label {
-    margin-bottom: 0;
   }
 
   .gallery-empty {
@@ -1424,31 +1576,100 @@ const thumbnailPreloads = artworksRaw
     font-size: 0.95rem;
   }
 
+  .gallery-layout {
+    position: relative;
+    width: 100%;
+  }
+
+  .works-index {
+    position: fixed;
+    top: 50%;
+    right: max(16px, calc((100vw - min(var(--max-width), 100vw - 32px)) / 2 + 16px));
+    transform: translateY(-50%);
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    width: 28px;
+    gap: 12px;
+    padding-top: 4px;
+    z-index: 2;
+  }
+
+  .works-index-bar {
+    display: block;
+    width: 100%;
+    height: 3px;
+    border-radius: 1px;
+    background: var(--color-border);
+    transition:
+      background 0.2s ease,
+      height 0.2s ease,
+      opacity 0.2s ease;
+  }
+
+  .works-index-bar:hover {
+    background: var(--color-text-muted);
+  }
+
+  .works-index-bar.is-active {
+    height: 5px;
+    background: var(--color-text);
+  }
+
+  .works-index-bar:focus-visible {
+    outline: 2px solid var(--color-text-muted);
+    outline-offset: 4px;
+  }
+
+  .gallery-sections {
+    width: 100%;
+    min-width: 0;
+  }
+
   .gallery-section + .gallery-section {
     margin-top: 72px;
   }
 
   .gallery-section-heading {
-    font-size: 1.05rem;
-    font-weight: 600;
-    letter-spacing: 0.02em;
+    display: grid;
+    grid-template-columns: 3px 1fr;
+    column-gap: 0.85rem;
+    align-items: start;
+    font-family: var(--font-display);
+    font-size: 1.35rem;
+    font-weight: 500;
+    letter-spacing: 0.01em;
     text-transform: none;
     color: var(--color-text-secondary);
     margin-bottom: 28px;
-    line-height: 1.35;
-    max-width: 42rem;
+    line-height: 1.3;
+    text-align: left;
+  }
+
+  .gallery-section-heading::before {
+    content: '';
+    grid-column: 1;
+    grid-row: 1 / -1;
+    width: 3px;
+    border-radius: 1px;
+    background: var(--color-text-muted);
+    align-self: stretch;
   }
 
   .gallery-section-heading-title {
+    grid-column: 2;
+    grid-row: 1;
     display: block;
     color: var(--color-text);
   }
 
   .gallery-section-count {
+    grid-column: 2;
+    grid-row: 2;
     display: block;
     margin-top: 0.3rem;
     font-size: 0.8rem;
-    font-weight: 500;
+    font-weight: 400;
     letter-spacing: 0.02em;
     text-transform: lowercase;
     color: var(--color-text-muted);
@@ -1476,29 +1697,28 @@ const thumbnailPreloads = artworksRaw
     container-type: inline-size;
     position: absolute;
     z-index: 0;
-    overflow: visible;
+    overflow: hidden;
     left: calc(var(--ax) * var(--grid-unit));
     top: calc(var(--ay) * var(--grid-unit));
     width: calc(var(--aw) * var(--grid-unit));
     height: calc(var(--ah) * var(--grid-unit));
     --card-w: calc(var(--aw) * var(--grid-unit));
     --card-h: calc(var(--ah) * var(--grid-unit));
-    /* Scale with tile width; tighter bounds on small screens */
-    --caption-size: clamp(0.6875rem, calc(var(--card-w) * 0.045), 0.9375rem);
-    background: transparent;
+    /* Scale with tile width; small tiles get smaller type via lower min + ratio */
+    --caption-size: min(0.9375rem, max(0.625rem, calc(var(--card-w) * 0.039)));
+    --caption-inset: max(0.55rem, calc(var(--caption-size) * 0.72), calc(var(--card-w) * 0.045));
+    background: var(--color-bg);
     text-align: left;
     border: none;
     padding: 0;
     cursor: pointer;
     border-radius: 5px;
     box-shadow: var(--shadow-artwork);
-    transition:
-      transform 0.2s ease,
-      box-shadow 0.2s ease;
+    isolation: isolate;
+    transition: box-shadow 0.2s ease;
   }
 
   .artwork-card:hover {
-    transform: scale(1.02);
     z-index: 2;
     box-shadow: var(--shadow-artwork-hover);
   }
@@ -1525,6 +1745,10 @@ const thumbnailPreloads = artworksRaw
   }
 
   :global(body.gallery-layout-edit-mode) .artwork-card:hover {
+    transform: none;
+  }
+
+  :global(body.gallery-layout-edit-mode) .artwork-card:hover .artwork-image-wrap img {
     transform: none;
   }
 
@@ -1610,7 +1834,7 @@ const thumbnailPreloads = artworksRaw
   .artwork-image-wrap {
     width: 100%;
     height: 100%;
-    overflow: visible;
+    overflow: hidden;
     border-radius: inherit;
   }
 
@@ -1619,39 +1843,100 @@ const thumbnailPreloads = artworksRaw
     width: 100%;
     height: 100%;
     object-fit: contain;
-    border-radius: inherit;
+    border-radius: 0;
+    transition: transform 0.22s ease;
+    -webkit-backface-visibility: hidden;
+    backface-visibility: hidden;
+    transform: translateZ(0);
+  }
+
+  .artwork-card:hover .artwork-image-wrap img {
+    transform: scale(1.03) translateZ(0);
+  }
+
+  :global(html[data-theme='dark']) .artwork-card:hover .artwork-image-wrap img {
+    transform: none;
+  }
+
+  :global(html[data-theme='dark']) .artwork-caption {
+    transition: none;
   }
 
   .artwork-caption {
     position: absolute;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    padding:
-      calc(var(--card-h) * 0.28)
-      calc(var(--card-w) * 0.045)
-      calc(var(--card-h) * 0.06);
-    gap: max(calc(var(--caption-size) * 1.25), calc(var(--card-w) * 0.07));
-    background: linear-gradient(transparent, var(--artwork-caption-fade));
+    inset: 0;
+    z-index: 1;
+    border-radius: inherit;
+    padding: var(--caption-inset);
+    gap: max(calc(var(--caption-size) * 0.65), calc(var(--card-w) * 0.035));
     color: var(--artwork-caption-text);
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    align-items: stretch;
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition: opacity 0.22s ease;
+  }
+
+  .artwork-caption::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: linear-gradient(
+      to bottom,
+      transparent 0%,
+      rgba(0, 0, 0, 0.08) 38%,
+      var(--artwork-caption-fade) 72%,
+      var(--artwork-caption-fade-end, var(--artwork-caption-fade)) 100%
+    );
+    opacity: 0;
+    transition: opacity 0.22s ease;
+    pointer-events: none;
+  }
+
+  .artwork-caption-main {
+    position: relative;
+    z-index: 1;
     display: flex;
     justify-content: space-between;
     align-items: flex-end;
-    opacity: 0;
-    transition: opacity 0.3s ease;
+    gap: max(calc(var(--caption-size) * 1.25), calc(var(--card-w) * 0.07));
+    width: 100%;
+    min-width: 0;
   }
 
   .artwork-card:hover .artwork-caption {
     opacity: 1;
+    visibility: visible;
+  }
+
+  .artwork-card:hover .artwork-caption::before {
+    opacity: 1;
+  }
+
+  :global(html[data-theme='dark']) .artwork-caption::before {
+    transition: none;
+  }
+
+  :global(html[data-theme='dark']) .artwork-card:hover .artwork-caption {
+    transition: none;
   }
 
   /* Touch devices: no hover — keep titles visible on gallery tiles */
   @media (hover: none), (pointer: coarse) {
     .artwork-caption {
       opacity: 1;
+      visibility: visible;
     }
 
-    .artwork-card:hover {
+    .artwork-caption::before {
+      opacity: 1;
+    }
+
+    .artwork-card:hover .artwork-image-wrap img {
       transform: none;
     }
   }
@@ -1840,13 +2125,27 @@ const thumbnailPreloads = artworksRaw
     flex-shrink: 0;
     width: 220px;
     color: #fff;
+    font-family: var(--font-body, 'DM Sans', system-ui, sans-serif);
   }
 
   .lightbox-title {
     font-size: 1.2rem;
-    font-weight: 500;
+    font-weight: 600;
     margin-bottom: 28px;
-    line-height: 1.4;
+    line-height: 1.35;
+  }
+
+  .lightbox-description-wrap {
+    margin: -16px 0 24px;
+  }
+
+  .lightbox-description {
+    display: block;
+    font-family: var(--font-display, 'DM Sans', system-ui, sans-serif);
+    font-size: 0.98rem;
+    font-weight: 250;
+    line-height: 1.55;
+    color: rgba(255, 255, 255, 0.78);
   }
 
   .lightbox-details {
@@ -1903,6 +2202,12 @@ const thumbnailPreloads = artworksRaw
     color: var(--color-text-muted);
   }
 
+  .footer-layout-toggle {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 1rem;
+  }
+
   .footer-line {
     margin: 0;
   }
@@ -1924,13 +2229,45 @@ const thumbnailPreloads = artworksRaw
   /* ---- Responsive ---- */
   @media (min-width: 861px) {
     .artwork-card {
-      --caption-size: clamp(0.875rem, calc(var(--card-w) * 0.052), 1.125rem);
+      --caption-size: min(1.125rem, max(0.75rem, calc(var(--card-w) * 0.048)));
     }
   }
 
   @media (max-width: 860px) {
+    .gallery-layout {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .works-index {
+      display: none;
+    }
+
     .artwork-caption {
       display: none;
+    }
+
+    .artwork-card:hover,
+    .artwork-card:active {
+      z-index: 0;
+      box-shadow: var(--shadow-artwork);
+    }
+
+    .artwork-card:hover .artwork-image-wrap img,
+    .artwork-card:active .artwork-image-wrap img {
+      transform: none;
+    }
+
+    .artwork-card--canvas:hover,
+    .artwork-card--canvas:active {
+      box-shadow: var(--shadow-artwork-canvas);
+    }
+
+    .artwork-card--digital:hover,
+    .artwork-card--digital:active,
+    .artwork-card--charcoal:hover,
+    .artwork-card--charcoal:active {
+      box-shadow: var(--shadow-artwork-soft);
     }
 
     .lightbox {
@@ -1998,9 +2335,20 @@ const thumbnailPreloads = artworksRaw
 
     .lightbox-title {
       display: block;
-      font-size: 0.88rem;
+      font-size: 1rem;
+      font-weight: 600;
       margin-bottom: 14px;
       line-height: 1.35;
+    }
+
+    .lightbox-description-wrap {
+      margin: -6px 0 14px;
+    }
+
+    .lightbox-description {
+      font-size: 0.92rem;
+      line-height: 1.45;
+      color: rgba(255, 255, 255, 0.72);
     }
 
     .lightbox-details {
@@ -2127,12 +2475,16 @@ const thumbnailPreloads = artworksRaw
       gap: 16px;
     }
 
+    .header-actions {
+      gap: 16px;
+    }
+
     .header-nav a {
       font-size: 0.84rem;
     }
 
     .header-name {
-      font-size: 1.15rem;
+      font-size: 1.25rem;
     }
 
     .theme-toggle {
@@ -2146,11 +2498,11 @@ const thumbnailPreloads = artworksRaw
     }
 
     .about {
-      padding: 40px 0 28px;
+      padding: 16px 0 20px;
     }
 
-    .about-content p {
-      font-size: 0.92rem;
+    .about-content > p:not(.about-contact) {
+      font-size: 1.05rem;
     }
 
     .about-contact {
@@ -2160,17 +2512,7 @@ const thumbnailPreloads = artworksRaw
     }
 
     .gallery {
-      padding: 40px 0 60px;
-    }
-
-    .gallery-heading {
-      margin-bottom: 24px;
-      gap: 12px;
-    }
-
-    .section-label {
-      margin-bottom: 24px;
-      font-size: 0.92rem;
+      padding: 24px 0 60px;
     }
 
     .gallery-section + .gallery-section {
@@ -2178,7 +2520,8 @@ const thumbnailPreloads = artworksRaw
     }
 
     .gallery-section-heading {
-      font-size: 0.95rem;
+      column-gap: 0.7rem;
+      font-size: 1.15rem;
       margin-bottom: 20px;
     }
 
@@ -2216,8 +2559,17 @@ const thumbnailPreloads = artworksRaw
     }
 
     .lightbox-title {
-      font-size: 0.82rem;
+      font-size: 0.95rem;
       margin-bottom: 12px;
+    }
+
+    .lightbox-description-wrap {
+      margin: -4px 0 12px;
+    }
+
+    .lightbox-description {
+      font-size: 0.88rem;
+      line-height: 1.4;
     }
 
     .lightbox-details {

@@ -17,6 +17,12 @@ const { title, description = 'Art portfolio' } = Astro.props;
     <meta name="description" content={description} />
     <meta name="color-scheme" content="light dark" />
     <title>{title}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,250;0,9..40,300;0,9..40,350;0,9..40,400;0,9..40,500;0,9..40,550;0,9..40,600;0,9..40,700;1,9..40,400&display=swap"
+    />
     <style is:inline>
       html:not(.is-ready) {
         background: #ffffff;
@@ -34,7 +40,8 @@ const { title, description = 'Art portfolio' } = Astro.props;
         align-items: center;
         justify-content: center;
         text-align: center;
-        font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        font-family: 'DM Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI',
+          sans-serif;
         transition: opacity 0.35s ease, visibility 0.35s ease;
       }
 
@@ -233,6 +240,8 @@ const { title, description = 'Art portfolio' } = Astro.props;
   }
 
   :root {
+    --font-body: 'DM Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    --font-display: var(--font-body);
     --max-width: 1320px;
     --header-height: 68px;
     --color-text: #1a1a1a;
@@ -241,23 +250,24 @@ const { title, description = 'Art portfolio' } = Astro.props;
     --color-border: #e4e4e4;
     --color-bg: #ffffff;
     --color-surface: #f0f0ee;
-    --color-header-bg: rgba(255, 255, 255, 0.92);
-    --artwork-caption-fade: rgba(0, 0, 0, 0.65);
+    --color-header-bg: rgba(255, 255, 255, 0.72);
+    --artwork-caption-fade: rgba(0, 0, 0, 0.52);
+    --artwork-caption-fade-end: rgba(0, 0, 0, 0.88);
     --artwork-caption-text: #ffffff;
     --shadow-artwork: 0 2px 14px rgba(0, 0, 0, 0.07);
-    --shadow-artwork-hover: 0 10px 28px rgba(0, 0, 0, 0.12);
+    --shadow-artwork-hover: 0 14px 36px rgba(0, 0, 0, 0.18), 0 4px 14px rgba(0, 0, 0, 0.1);
     --shadow-artwork-canvas:
       -3px 4px 5px -1px rgba(0, 0, 0, 0.26), -6px 8px 12px -2px rgba(0, 0, 0, 0.22),
       -9px 12px 18px -4px rgba(0, 0, 0, 0.16);
     --shadow-artwork-canvas-hover:
-      -4px 5px 7px -1px rgba(0, 0, 0, 0.3), -7px 10px 15px -2px rgba(0, 0, 0, 0.26),
-      -11px 14px 22px -4px rgba(0, 0, 0, 0.19);
+      -5px 7px 12px -1px rgba(0, 0, 0, 0.38), -10px 14px 24px -2px rgba(0, 0, 0, 0.32),
+      -16px 22px 36px -4px rgba(0, 0, 0, 0.26);
     --shadow-artwork-soft:
       0 2px 8px rgba(0, 0, 0, 0.1), 0 8px 20px rgba(0, 0, 0, 0.08),
       -2px 3px 10px rgba(0, 0, 0, 0.06);
     --shadow-artwork-soft-hover:
-      0 6px 16px rgba(0, 0, 0, 0.12), 0 14px 32px rgba(0, 0, 0, 0.09),
-      -3px 4px 14px rgba(0, 0, 0, 0.07);
+      0 10px 24px rgba(0, 0, 0, 0.16), 0 20px 44px rgba(0, 0, 0, 0.12),
+      -4px 6px 20px rgba(0, 0, 0, 0.1);
   }
 
   html[data-theme='light'] {
@@ -272,24 +282,21 @@ const { title, description = 'Art portfolio' } = Astro.props;
     --color-border: #45403a;
     --color-bg: #1f1d1b;
     --color-surface: #2c2926;
-    --color-header-bg: rgba(31, 29, 27, 0.92);
-    --artwork-caption-fade: rgba(0, 0, 0, 0.72);
+    --color-header-bg: rgba(31, 29, 27, 0.72);
+    --artwork-caption-fade: rgba(0, 0, 0, 0.58);
+    --artwork-caption-fade-end: rgba(0, 0, 0, 0.94);
     --artwork-caption-text: #f5f5f5;
-    /* Stronger depth + hairline so cards read off the charcoal background */
-    --shadow-artwork: 0 4px 20px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.07);
-    --shadow-artwork-hover: 0 14px 40px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(255, 255, 255, 0.1);
+    /* Depth only — no white hairline (avoids light-edge flash on hover) */
+    --shadow-artwork: 0 4px 20px rgba(0, 0, 0, 0.55);
+    --shadow-artwork-hover: 0 18px 52px rgba(0, 0, 0, 0.78), 0 6px 18px rgba(0, 0, 0, 0.55);
     --shadow-artwork-canvas:
-      -4px 6px 14px -2px rgba(0, 0, 0, 0.55), -12px 16px 32px -8px rgba(0, 0, 0, 0.42),
-      0 0 0 1px rgba(255, 255, 255, 0.06);
+      -4px 6px 14px -2px rgba(0, 0, 0, 0.55), -12px 16px 32px -8px rgba(0, 0, 0, 0.42);
     --shadow-artwork-canvas-hover:
-      -5px 8px 18px -2px rgba(0, 0, 0, 0.62), -14px 20px 38px -8px rgba(0, 0, 0, 0.48),
-      0 0 0 1px rgba(255, 255, 255, 0.09);
+      -6px 10px 22px -2px rgba(0, 0, 0, 0.72), -16px 24px 44px -8px rgba(0, 0, 0, 0.58);
     --shadow-artwork-soft:
-      0 4px 16px rgba(0, 0, 0, 0.45), 0 10px 28px rgba(0, 0, 0, 0.32),
-      0 0 0 1px rgba(255, 255, 255, 0.06);
+      0 4px 16px rgba(0, 0, 0, 0.45), 0 10px 28px rgba(0, 0, 0, 0.32);
     --shadow-artwork-soft-hover:
-      0 8px 22px rgba(0, 0, 0, 0.5), 0 18px 40px rgba(0, 0, 0, 0.38),
-      0 0 0 1px rgba(255, 255, 255, 0.08);
+      0 12px 32px rgba(0, 0, 0, 0.58), 0 24px 52px rgba(0, 0, 0, 0.45);
   }
 
   html {
@@ -297,8 +304,7 @@ const { title, description = 'Art portfolio' } = Astro.props;
   }
 
   body {
-    font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI',
-      sans-serif;
+    font-family: var(--font-body);
     color: var(--color-text);
     background: var(--color-bg);
     line-height: 1.6;
@@ -342,12 +348,14 @@ const { title, description = 'Art portfolio' } = Astro.props;
   }
 
   .page-loader__title {
-    font-size: 1.35rem;
+    font-family: var(--font-display);
+    font-size: 1.55rem;
     font-weight: 600;
-    letter-spacing: 0.02em;
+    letter-spacing: 0.01em;
   }
 
   .page-loader__artist {
+    font-family: var(--font-body);
     font-size: 0.95rem;
     color: var(--color-text-secondary);
     letter-spacing: 0.03em;
